@@ -48,6 +48,11 @@ func fetchZoneDataCmd(client *firewalld.Client, zone string) tea.Cmd {
 		if err != nil {
 			return zoneDataMsg{err: err}
 		}
+		if len(parsed.Ports) == 0 {
+			if ports, err := client.GetPortsRuntime(zone); err == nil && len(ports) > 0 {
+				parsed.Ports = ports
+			}
+		}
 
 		rawKeys, rawPorts, rawDump := firewalld.DebugZoneSettings(settings)
 

@@ -98,6 +98,24 @@ func (c *Client) GetPorts(zone string, permanent bool) ([]Port, error) {
 	return settings.Ports, nil
 }
 
+func (c *Client) GetPortsRuntime(zone string) ([]Port, error) {
+	if c == nil || c.obj == nil {
+		return nil, errors.New("firewalld client not initialized")
+	}
+
+	ports, err := c.getPortsByArgs(zone)
+	if err == nil {
+		return ports, nil
+	}
+
+	ports, err2 := c.getPortsByArgs(zone, false)
+	if err2 == nil {
+		return ports, nil
+	}
+
+	return nil, err
+}
+
 func (c *Client) GetRichRules(zone string, permanent bool) ([]string, error) {
 	if permanent {
 		return nil, errors.New("permanent zone rich rules not implemented")
@@ -151,6 +169,38 @@ func (c *Client) call(method string, out any, args ...any) error {
 		return fmt.Errorf("dbus store %s: %w", method, err)
 	}
 	return nil
+}
+
+func (c *Client) getPortsByArgs(args ...any) ([]Port, error) {
+	call := c.obj.Call(dbusInterface+".zone.getPorts", 0, args...)
+	if call.Err != nil {
+		return nil, fmt.Errorf("dbus call %s: %w", dbusInterface+".zone.getPorts", call.Err)
+	}
+
+	var stringPorts []string
+	if err := call.Store(&stringPorts); err == nil {
+		ports := make([]Port, 0, len(stringPorts))
+		for _, entry := range stringPorts {
+			port, err := parsePortString(entry)
+			if err != nil {
+				return nil, err
+			}
+			ports = append(ports, port)
+		}
+		return ports, nil
+	}
+
+	var tuplePorts [][]string
+	if err := call.Store(&tuplePorts); err == nil {
+		return portsFromStringPairs(tuplePorts)
+	}
+
+	var raw []interface{}
+	if err := call.Store(&raw); err == nil {
+		return toPorts(raw)
+	}
+
+	return nil, nil
 }
 
 func parsePortString(value string) (Port, error) {
