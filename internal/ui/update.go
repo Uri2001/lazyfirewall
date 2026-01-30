@@ -66,6 +66,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "D":
 			m.debugMode = !m.debugMode
+		case "P":
+			m.permanent = !m.permanent
+			return m, m.fetchSelectedZone()
 		case "r":
 			return m, tea.Batch(fetchZonesCmd(m.client), fetchActiveZonesCmd(m.client), fetchDefaultZoneCmd(m.client), m.fetchSelectedZone())
 		}
@@ -110,7 +113,7 @@ func (m Model) fetchSelectedZone() tea.Cmd {
 	}
 	m.loading = true
 	zone := m.zones[m.selectedZone]
-	return fetchZoneDataCmd(m.client, zone)
+	return fetchZoneDataCmd(m.client, zone, m.permanent)
 }
 
 func setTab(m Model, idx int) Model {

@@ -33,14 +33,22 @@ func fetchDefaultZoneCmd(client *firewalld.Client) tea.Cmd {
 	}
 }
 
-func fetchZoneDataCmd(client *firewalld.Client, zone string) tea.Cmd {
+func fetchZoneDataCmd(client *firewalld.Client, zone string, permanent bool) tea.Cmd {
 	return func() tea.Msg {
 		if zone == "" {
 			return zoneDataMsg{err: errEmptyZone}
 		}
 
-		var settings map[string]dbus.Variant
-		if err := client.RawZoneSettings(zone, &settings); err != nil {
+		var (
+			settings map[string]dbus.Variant
+			err      error
+		)
+		if permanent {
+			err = client.RawZoneSettingsPermanent(zone, &settings)
+		} else {
+			err = client.RawZoneSettings(zone, &settings)
+		}
+		if err != nil {
 			return zoneDataMsg{err: err}
 		}
 
@@ -48,7 +56,7 @@ func fetchZoneDataCmd(client *firewalld.Client, zone string) tea.Cmd {
 		if err != nil {
 			return zoneDataMsg{err: err}
 		}
-		if len(parsed.Ports) == 0 {
+		if !permanent && len(parsed.Ports) == 0 {
 			if ports, err := client.GetPortsRuntime(zone); err == nil && len(ports) > 0 {
 				parsed.Ports = ports
 			}

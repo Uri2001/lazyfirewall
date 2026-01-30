@@ -99,7 +99,11 @@ func (m Model) renderMain() string {
 	}
 
 	var b strings.Builder
-	b.WriteString("Selected: " + zone + "\n\n")
+	mode := "Runtime"
+	if m.permanent {
+		mode = "Permanent"
+	}
+	b.WriteString("Selected: " + zone + " [" + mode + "]\n\n")
 	b.WriteString(m.renderTabs())
 	b.WriteString("\n\n")
 
@@ -120,7 +124,11 @@ func (m Model) renderMain() string {
 }
 
 func (m Model) renderFooter() string {
-	return "[q] Quit  [tab] Switch Panel  [↑↓] Navigate  [h/l] Tabs  [1-5] Jump  [D] Debug  [r] Refresh"
+	mode := "R"
+	if m.permanent {
+		mode = "P"
+	}
+	return "[q] Quit  [tab] Switch Panel  [↑↓] Navigate  [h/l] Tabs  [1-5] Jump  [P] Mode(" + mode + ")  [D] Debug  [r] Refresh"
 }
 
 func (m Model) renderTabs() string {

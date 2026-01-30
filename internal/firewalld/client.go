@@ -227,6 +227,41 @@ func (c *Client) RawZoneSettings(zone string, settings *map[string]dbus.Variant)
 	return c.call(dbusInterface+".zone.getZoneSettings2", settings, zone)
 }
 
+func (c *Client) RawZoneSettingsPermanent(zone string, settings *map[string]dbus.Variant) error {
+	if c == nil || c.conn == nil {
+		return errors.New("firewalld client not initialized")
+	}
+
+	var zonePath dbus.ObjectPath
+	if err := c.call(dbusInterface+".config.getZoneByName", &zonePath, zone); err != nil {
+		return err
+	}
+	obj := c.conn.Object(dbusInterface, zonePath)
+
+	try := func(iface, method string) error {
+		call := obj.Call(iface+"."+method, 0)
+		if call.Err != nil {
+			return call.Err
+		}
+		if err := call.Store(settings); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	if err := try(dbusInterface+".config.zone", "getSettings2"); err == nil {
+		return nil
+	}
+	if err := try(dbusInterface+".config.zone", "getSettings"); err == nil {
+		return nil
+	}
+	if err := try(dbusInterface+".zone", "getZoneSettings2"); err == nil {
+		return nil
+	}
+
+	return fmt.Errorf("failed to load permanent zone settings for %s", zone)
+}
+
 func ParseZoneSettings(zone string, settings map[string]dbus.Variant) (*Zone, error) {
 	z := &Zone{Name: zone}
 
@@ -331,6 +366,19 @@ func toPorts(value any) ([]Port, error) {
 		return toPorts(v.Value())
 	case [][]string:
 		return portsFromStringPairs(v)
+	case [][]interface{}:
+		pairs := make([][]string, 0, len(v))
+		for _, entry := range v {
+			if len(entry) < 2 {
+				continue
+			}
+			a, aok := entry[0].(string)
+			b, bok := entry[1].(string)
+			if aok && bok {
+				pairs = append(pairs, []string{a, b})
+			}
+		}
+		return portsFromStringPairs(pairs)
 	case []dbus.Variant:
 		ports := make([]Port, 0, len(v))
 		for _, entry := range v {
