@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -27,6 +28,15 @@ var (
 	defaultBadgeStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("228")).
 				Bold(true)
+
+	tabStyle = lipgloss.NewStyle().
+			Padding(0, 1).
+			Foreground(lipgloss.Color("252"))
+
+	tabActiveStyle = lipgloss.NewStyle().
+			Padding(0, 1).
+			Bold(true).
+			Foreground(lipgloss.Color("170"))
 )
 
 func (m Model) View() string {
@@ -78,10 +88,130 @@ func (m Model) renderMain() string {
 		return mainStyle.Render("Loading...")
 	}
 	zone := m.zones[m.selectedZone]
-	content := "Selected: " + zone + "\n\n[Details will go here]"
-	return mainStyle.Render(content)
+	if m.loading {
+		return mainStyle.Render("Loading zone data...")
+	}
+	if m.zoneData == nil {
+		return mainStyle.Render("No data for zone: " + zone)
+	}
+
+	var b strings.Builder
+	b.WriteString("Selected: " + zone + "\n\n")
+	b.WriteString(m.renderTabs())
+	b.WriteString("\n\n")
+
+	switch m.tab {
+	case tabServices:
+		b.WriteString(m.renderServices())
+	case tabPorts:
+		b.WriteString(m.renderPorts())
+	case tabRules:
+		b.WriteString(m.renderRules())
+	case tabMasquerade:
+		b.WriteString(m.renderMasquerade())
+	case tabInfo:
+		b.WriteString(m.renderInfo())
+	}
+
+	return mainStyle.Render(b.String())
 }
 
 func (m Model) renderFooter() string {
-	return "[q] Quit  [tab] Switch Panel  [↑↓] Navigate  [r] Refresh"
+	return "[q] Quit  [tab] Switch Panel  [↑↓] Navigate  [h/l] Tabs  [1-5] Jump  [r] Refresh"
+}
+
+func (m Model) renderTabs() string {
+	tabs := []string{"Services", "Ports", "Rich Rules", "Masquerade", "Info"}
+	var parts []string
+	for i, tab := range tabs {
+		style := tabStyle
+		if mainTab(i) == m.tab {
+			style = tabActiveStyle
+		}
+		parts = append(parts, style.Render(tab))
+	}
+	return strings.Join(parts, "")
+}
+
+func (m Model) renderServices() string {
+	if len(m.zoneData.Services) == 0 {
+		return "(no services)"
+	}
+	var b strings.Builder
+	for i, service := range m.zoneData.Services {
+		line := "  " + service
+		if i == m.selectedService && m.focus == focusMain {
+			line = selectedStyle.Render("› " + service)
+		}
+		b.WriteString(line + "\n")
+	}
+	return b.String()
+}
+
+func (m Model) renderPorts() string {
+	if len(m.zoneData.Ports) == 0 {
+		return "(no ports)"
+	}
+	var b strings.Builder
+	for i, port := range m.zoneData.Ports {
+		line := "  " + port.Protocol + " " + itoa(port.Number)
+		if i == m.selectedPort && m.focus == focusMain {
+			line = selectedStyle.Render("› " + port.Protocol + " " + itoa(port.Number))
+		}
+		b.WriteString(line + "\n")
+	}
+	return b.String()
+}
+
+func (m Model) renderRules() string {
+	if len(m.zoneData.RichRules) == 0 {
+		return "(no rich rules)"
+	}
+	var b strings.Builder
+	for i, rule := range m.zoneData.RichRules {
+		line := "  " + rule
+		if i == m.selectedRule && m.focus == focusMain {
+			line = selectedStyle.Render("› " + rule)
+		}
+		b.WriteString(line + "\n")
+	}
+	return b.String()
+}
+
+func (m Model) renderMasquerade() string {
+	status := "OFF"
+	if m.zoneData.Masquerade {
+		status = "ON"
+	}
+	var b strings.Builder
+	b.WriteString("Masquerade: " + status + "\n\n")
+	b.WriteString("Interfaces:\n")
+	if len(m.zoneData.Interfaces) == 0 {
+		b.WriteString("  (none)\n")
+	} else {
+		for _, iface := range m.zoneData.Interfaces {
+			b.WriteString("  • " + iface + "\n")
+		}
+	}
+	b.WriteString("\nSources:\n")
+	if len(m.zoneData.Sources) == 0 {
+		b.WriteString("  (none)\n")
+	} else {
+		for _, src := range m.zoneData.Sources {
+			b.WriteString("  • " + src + "\n")
+		}
+	}
+	return b.String()
+}
+
+func (m Model) renderInfo() string {
+	var b strings.Builder
+	b.WriteString("Zone: " + m.zoneData.Zone + "\n")
+	b.WriteString("Interfaces: " + strings.Join(m.zoneData.Interfaces, ", ") + "\n")
+	b.WriteString("Sources: " + strings.Join(m.zoneData.Sources, ", ") + "\n")
+	return b.String()
+}
+
+func itoa(value int) string {
+	return strconv.Itoa(value)
 }

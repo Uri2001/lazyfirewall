@@ -4,6 +4,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"lazyfirewall/internal/firewalld"
+	"lazyfirewall/internal/models"
 )
 
 type focusPanel int
@@ -14,15 +15,32 @@ const (
 	focusDetails
 )
 
+type mainTab int
+
+const (
+	tabServices mainTab = iota
+	tabPorts
+	tabRules
+	tabMasquerade
+	tabInfo
+)
+
 type Model struct {
 	client *firewalld.Client
 
 	zones       []string
 	activeZones map[string][]string
 	defaultZone string
+	zoneData    *models.ZoneData
+	loading     bool
 
-	selectedZone int
-	focus        focusPanel
+	tab mainTab
+
+	selectedZone    int
+	focus           focusPanel
+	selectedService int
+	selectedPort    int
+	selectedRule    int
 
 	width  int
 	height int
@@ -34,6 +52,7 @@ func NewModel(client *firewalld.Client) Model {
 	return Model{
 		client: client,
 		focus:  focusSidebar,
+		tab:    tabServices,
 	}
 }
 
