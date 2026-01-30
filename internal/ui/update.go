@@ -33,9 +33,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "tab":
-			m.focus = (m.focus + 1) % 3
-		case "shift+tab":
-			m.focus = (m.focus + 2) % 3
+			m.focus = (m.focus + 1) % focusCount
+		case "shift+tab", "backtab":
+			m.focus = (m.focus + focusCount - 1) % focusCount
 		case "j", "down":
 			if m.focus == focusSidebar && m.selectedZone < len(m.zones)-1 {
 				m.selectedZone++

@@ -225,6 +225,16 @@ func toPorts(value any) ([]Port, error) {
 	switch v := value.(type) {
 	case [][]string:
 		return portsFromStringPairs(v)
+	case []string:
+		ports := make([]Port, 0, len(v))
+		for _, entry := range v {
+			port, err := parsePortString(entry)
+			if err != nil {
+				return nil, err
+			}
+			ports = append(ports, port)
+		}
+		return ports, nil
 	case []interface{}:
 		pairs := make([][]string, 0, len(v))
 		for _, entry := range v {

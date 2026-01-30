@@ -15,6 +15,8 @@ const (
 	focusDetails
 )
 
+const focusCount = 2
+
 type mainTab int
 
 const (
