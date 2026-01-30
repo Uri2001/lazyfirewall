@@ -35,6 +35,7 @@ type Model struct {
 	defaultZone string
 	zoneData    *models.ZoneData
 	loading     bool
+	debugMode   bool
 
 	tab mainTab
 

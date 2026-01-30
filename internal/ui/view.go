@@ -94,6 +94,9 @@ func (m Model) renderMain() string {
 	if m.zoneData == nil {
 		return mainStyle.Render("No data for zone: " + zone)
 	}
+	if m.debugMode {
+		return mainStyle.Render(m.renderDebug())
+	}
 
 	var b strings.Builder
 	b.WriteString("Selected: " + zone + "\n\n")
@@ -117,7 +120,7 @@ func (m Model) renderMain() string {
 }
 
 func (m Model) renderFooter() string {
-	return "[q] Quit  [tab] Switch Panel  [↑↓] Navigate  [h/l] Tabs  [1-5] Jump  [r] Refresh"
+	return "[q] Quit  [tab] Switch Panel  [↑↓] Navigate  [h/l] Tabs  [1-5] Jump  [D] Debug  [r] Refresh"
 }
 
 func (m Model) renderTabs() string {
@@ -209,6 +212,32 @@ func (m Model) renderInfo() string {
 	b.WriteString("Zone: " + m.zoneData.Zone + "\n")
 	b.WriteString("Interfaces: " + strings.Join(m.zoneData.Interfaces, ", ") + "\n")
 	b.WriteString("Sources: " + strings.Join(m.zoneData.Sources, ", ") + "\n")
+	return b.String()
+}
+
+func (m Model) renderDebug() string {
+	var b strings.Builder
+	b.WriteString("Debug: getZoneSettings2\n\n")
+	if len(m.zoneData.RawKeys) > 0 {
+		b.WriteString("Keys:\n")
+		for _, key := range m.zoneData.RawKeys {
+			b.WriteString("  • " + key + "\n")
+		}
+		b.WriteString("\n")
+	}
+	if len(m.zoneData.RawPorts) > 0 {
+		b.WriteString("Ports raw:\n")
+		for _, line := range m.zoneData.RawPorts {
+			b.WriteString("  " + line + "\n")
+		}
+		b.WriteString("\n")
+	}
+	if len(m.zoneData.RawDump) > 0 {
+		b.WriteString("Dump:\n")
+		for _, line := range m.zoneData.RawDump {
+			b.WriteString("  " + line + "\n")
+		}
+	}
 	return b.String()
 }
 

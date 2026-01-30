@@ -10,4 +10,7 @@ type ZoneData struct {
 	Masquerade bool
 	Interfaces []string
 	Sources    []string
+	RawKeys    []string
+	RawPorts   []string
+	RawDump    []string
 }

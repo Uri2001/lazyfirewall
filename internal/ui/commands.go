@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/godbus/dbus/v5"
 
 	"lazyfirewall/internal/firewalld"
 	"lazyfirewall/internal/models"
@@ -38,20 +39,30 @@ func fetchZoneDataCmd(client *firewalld.Client, zone string) tea.Cmd {
 			return zoneDataMsg{err: errEmptyZone}
 		}
 
-		settings, err := client.GetZoneSettings(zone)
+		var settings map[string]dbus.Variant
+		if err := client.RawZoneSettings(zone, &settings); err != nil {
+			return zoneDataMsg{err: err}
+		}
+
+		parsed, err := firewalld.ParseZoneSettings(zone, settings)
 		if err != nil {
 			return zoneDataMsg{err: err}
 		}
 
+		rawKeys, rawPorts, rawDump := firewalld.DebugZoneSettings(settings)
+
 		return zoneDataMsg{
 			data: &models.ZoneData{
-				Zone:       settings.Name,
-				Services:   settings.Services,
-				Ports:      settings.Ports,
-				RichRules:  settings.RichRules,
-				Masquerade: settings.Masquerade,
-				Interfaces: settings.Interfaces,
-				Sources:    settings.Sources,
+				Zone:       parsed.Name,
+				Services:   parsed.Services,
+				Ports:      parsed.Ports,
+				RichRules:  parsed.RichRules,
+				Masquerade: parsed.Masquerade,
+				Interfaces: parsed.Interfaces,
+				Sources:    parsed.Sources,
+				RawKeys:    rawKeys,
+				RawPorts:   rawPorts,
+				RawDump:    rawDump,
 			},
 		}
 	}

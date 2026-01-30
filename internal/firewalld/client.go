@@ -170,10 +170,14 @@ func (c *Client) GetZoneSettings(zone string) (*Zone, error) {
 	if err := c.call(dbusInterface+".zone.getZoneSettings2", &settings, zone); err != nil {
 		return nil, err
 	}
-	return parseZoneSettings(zone, settings)
+	return ParseZoneSettings(zone, settings)
 }
 
-func parseZoneSettings(zone string, settings map[string]dbus.Variant) (*Zone, error) {
+func (c *Client) RawZoneSettings(zone string, settings *map[string]dbus.Variant) error {
+	return c.call(dbusInterface+".zone.getZoneSettings2", settings, zone)
+}
+
+func ParseZoneSettings(zone string, settings map[string]dbus.Variant) (*Zone, error) {
 	z := &Zone{Name: zone}
 
 	if v, ok := settings["services"]; ok {
@@ -200,8 +204,58 @@ func parseZoneSettings(zone string, settings map[string]dbus.Variant) (*Zone, er
 		}
 		z.Ports = ports
 	}
+	if len(z.Ports) == 0 {
+		if v, ok := settings["ports_str"]; ok {
+			ports, err := toPorts(v.Value())
+			if err != nil {
+				return nil, err
+			}
+			z.Ports = ports
+		}
+	}
 
 	return z, nil
+}
+
+func DebugZoneSettings(settings map[string]dbus.Variant) (keys []string, ports []string, dump []string) {
+	for key := range settings {
+		keys = append(keys, key)
+	}
+
+	if v, ok := settings["ports"]; ok {
+		ports = append(ports, debugVariant("ports", v)...)
+	}
+	if v, ok := settings["ports_str"]; ok {
+		ports = append(ports, debugVariant("ports_str", v)...)
+	}
+
+	for _, key := range keys {
+		if v, ok := settings[key]; ok {
+			dump = append(dump, debugVariant(key, v)...)
+		}
+	}
+	return keys, ports, dump
+}
+
+func debugVariant(label string, v dbus.Variant) []string {
+	value := v.Value()
+	lines := []string{fmt.Sprintf("%s: %T", label, value)}
+
+	switch val := value.(type) {
+	case []string:
+		lines = append(lines, "  "+strings.Join(val, ", "))
+	case [][]string:
+		for _, pair := range val {
+			lines = append(lines, "  "+strings.Join(pair, "/"))
+		}
+	case []interface{}:
+		for _, entry := range val {
+			lines = append(lines, "  "+fmt.Sprintf("%v (%T)", entry, entry))
+		}
+	case dbus.Variant:
+		lines = append(lines, debugVariant(label+"(variant)", val)...)
+	}
+	return lines
 }
 
 func toStringSlice(value any) []string {
@@ -223,8 +277,20 @@ func toStringSlice(value any) []string {
 
 func toPorts(value any) ([]Port, error) {
 	switch v := value.(type) {
+	case dbus.Variant:
+		return toPorts(v.Value())
 	case [][]string:
 		return portsFromStringPairs(v)
+	case []dbus.Variant:
+		ports := make([]Port, 0, len(v))
+		for _, entry := range v {
+			list, err := toPorts(entry.Value())
+			if err != nil {
+				return nil, err
+			}
+			ports = append(ports, list...)
+		}
+		return ports, nil
 	case []string:
 		ports := make([]Port, 0, len(v))
 		for _, entry := range v {
@@ -239,6 +305,14 @@ func toPorts(value any) ([]Port, error) {
 		pairs := make([][]string, 0, len(v))
 		for _, entry := range v {
 			switch item := entry.(type) {
+			case dbus.Variant:
+				list, err := toPorts(item.Value())
+				if err != nil {
+					return nil, err
+				}
+				for _, port := range list {
+					pairs = append(pairs, []string{strconv.Itoa(port.Number), port.Protocol})
+				}
 			case []string:
 				if len(item) >= 2 {
 					pairs = append(pairs, item[:2])

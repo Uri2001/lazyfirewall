@@ -64,8 +64,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focus == focusMain {
 				m = setTab(m, int(msg.String()[0]-'1'))
 			}
+		case "D":
+			m.debugMode = !m.debugMode
 		case "r":
-			return m, tea.Batch(fetchZonesCmd(m.client), fetchActiveZonesCmd(m.client), fetchDefaultZoneCmd(m.client))
+			return m, tea.Batch(fetchZonesCmd(m.client), fetchActiveZonesCmd(m.client), fetchDefaultZoneCmd(m.client), m.fetchSelectedZone())
 		}
 
 	case tea.WindowSizeMsg:
