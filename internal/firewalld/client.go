@@ -225,24 +225,6 @@ func toPorts(value any) ([]Port, error) {
 	switch v := value.(type) {
 	case [][]string:
 		return portsFromStringPairs(v)
-	case []dbus.Struct:
-		pairs := make([][]string, 0, len(v))
-		for _, entry := range v {
-			if len(entry.Fields) < 2 {
-				continue
-			}
-			pair := []string{}
-			if s, ok := entry.Fields[0].(string); ok {
-				pair = append(pair, s)
-			}
-			if s, ok := entry.Fields[1].(string); ok {
-				pair = append(pair, s)
-			}
-			if len(pair) == 2 {
-				pairs = append(pairs, pair)
-			}
-		}
-		return portsFromStringPairs(pairs)
 	case []interface{}:
 		pairs := make([][]string, 0, len(v))
 		for _, entry := range v {
@@ -255,14 +237,6 @@ func toPorts(value any) ([]Port, error) {
 				if len(item) >= 2 {
 					a, aok := item[0].(string)
 					b, bok := item[1].(string)
-					if aok && bok {
-						pairs = append(pairs, []string{a, b})
-					}
-				}
-			case dbus.Struct:
-				if len(item.Fields) >= 2 {
-					a, aok := item.Fields[0].(string)
-					b, bok := item.Fields[1].(string)
 					if aok && bok {
 						pairs = append(pairs, []string{a, b})
 					}
