@@ -38,40 +38,20 @@ func fetchZoneDataCmd(client *firewalld.Client, zone string) tea.Cmd {
 			return zoneDataMsg{err: errEmptyZone}
 		}
 
-		services, err := client.GetServices(zone, false)
-		if err != nil {
-			return zoneDataMsg{err: err}
-		}
-		ports, err := client.GetPorts(zone, false)
-		if err != nil {
-			return zoneDataMsg{err: err}
-		}
-		rules, err := client.GetRichRules(zone, false)
-		if err != nil {
-			return zoneDataMsg{err: err}
-		}
-		masq, err := client.GetMasqueradeStatus(zone, false)
-		if err != nil {
-			return zoneDataMsg{err: err}
-		}
-		ifaces, err := client.GetInterfaces(zone)
-		if err != nil {
-			return zoneDataMsg{err: err}
-		}
-		sources, err := client.GetSources(zone)
+		settings, err := client.GetZoneSettings(zone)
 		if err != nil {
 			return zoneDataMsg{err: err}
 		}
 
 		return zoneDataMsg{
 			data: &models.ZoneData{
-				Zone:       zone,
-				Services:   services,
-				Ports:      ports,
-				RichRules:  rules,
-				Masquerade: masq,
-				Interfaces: ifaces,
-				Sources:    sources,
+				Zone:       settings.Name,
+				Services:   settings.Services,
+				Ports:      settings.Ports,
+				RichRules:  settings.RichRules,
+				Masquerade: settings.Masquerade,
+				Interfaces: settings.Interfaces,
+				Sources:    settings.Sources,
 			},
 		}
 	}

@@ -77,86 +77,63 @@ func (c *Client) SetDefaultZone(zone string) error {
 }
 
 func (c *Client) GetServices(zone string, permanent bool) ([]string, error) {
-	var services []string
-	if err := c.call(dbusInterface+".zone.getServices", &services, zone, permanent); err != nil {
+	if permanent {
+		return nil, errors.New("permanent zone services not implemented")
+	}
+	settings, err := c.GetZoneSettings(zone)
+	if err != nil {
 		return nil, err
 	}
-	return services, nil
+	return settings.Services, nil
 }
 
 func (c *Client) GetPorts(zone string, permanent bool) ([]Port, error) {
-	if c == nil || c.obj == nil {
-		return nil, errors.New("firewalld client not initialized")
+	if permanent {
+		return nil, errors.New("permanent zone ports not implemented")
 	}
-
-	call := c.obj.Call(dbusInterface+".zone.getPorts", 0, zone, permanent)
-	if call.Err != nil {
-		return nil, fmt.Errorf("dbus call %s: %w", dbusInterface+".zone.getPorts", call.Err)
+	settings, err := c.GetZoneSettings(zone)
+	if err != nil {
+		return nil, err
 	}
-
-	var stringPorts []string
-	if err := call.Store(&stringPorts); err == nil {
-		ports := make([]Port, 0, len(stringPorts))
-		for _, entry := range stringPorts {
-			port, err := parsePortString(entry)
-			if err != nil {
-				return nil, err
-			}
-			ports = append(ports, port)
-		}
-		return ports, nil
-	}
-
-	type portTuple struct {
-		Port     string
-		Protocol string
-	}
-	var tuplePorts []portTuple
-	if err := call.Store(&tuplePorts); err != nil {
-		return nil, fmt.Errorf("dbus store %s: %w", dbusInterface+".zone.getPorts", err)
-	}
-
-	ports := make([]Port, 0, len(tuplePorts))
-	for _, entry := range tuplePorts {
-		number, err := strconv.Atoi(entry.Port)
-		if err != nil {
-			return nil, fmt.Errorf("invalid port number %q: %w", entry.Port, err)
-		}
-		ports = append(ports, Port{Number: number, Protocol: entry.Protocol})
-	}
-	return ports, nil
+	return settings.Ports, nil
 }
 
 func (c *Client) GetRichRules(zone string, permanent bool) ([]string, error) {
-	var rules []string
-	if err := c.call(dbusInterface+".zone.getRichRules", &rules, zone, permanent); err != nil {
+	if permanent {
+		return nil, errors.New("permanent zone rich rules not implemented")
+	}
+	settings, err := c.GetZoneSettings(zone)
+	if err != nil {
 		return nil, err
 	}
-	return rules, nil
+	return settings.RichRules, nil
 }
 
 func (c *Client) GetMasqueradeStatus(zone string, permanent bool) (bool, error) {
-	var enabled bool
-	if err := c.call(dbusInterface+".zone.queryMasquerade", &enabled, zone, permanent); err != nil {
+	if permanent {
+		return false, errors.New("permanent zone masquerade not implemented")
+	}
+	settings, err := c.GetZoneSettings(zone)
+	if err != nil {
 		return false, err
 	}
-	return enabled, nil
+	return settings.Masquerade, nil
 }
 
 func (c *Client) GetInterfaces(zone string) ([]string, error) {
-	var interfaces []string
-	if err := c.call(dbusInterface+".zone.getInterfaces", &interfaces, zone); err != nil {
+	settings, err := c.GetZoneSettings(zone)
+	if err != nil {
 		return nil, err
 	}
-	return interfaces, nil
+	return settings.Interfaces, nil
 }
 
 func (c *Client) GetSources(zone string) ([]string, error) {
-	var sources []string
-	if err := c.call(dbusInterface+".zone.getSources", &sources, zone); err != nil {
+	settings, err := c.GetZoneSettings(zone)
+	if err != nil {
 		return nil, err
 	}
-	return sources, nil
+	return settings.Sources, nil
 }
 
 func (c *Client) call(method string, out any, args ...any) error {
@@ -186,4 +163,129 @@ func parsePortString(value string) (Port, error) {
 		return Port{}, fmt.Errorf("invalid port number %q: %w", parts[0], err)
 	}
 	return Port{Number: number, Protocol: parts[1]}, nil
+}
+
+func (c *Client) GetZoneSettings(zone string) (*Zone, error) {
+	var settings map[string]dbus.Variant
+	if err := c.call(dbusInterface+".zone.getZoneSettings2", &settings, zone); err != nil {
+		return nil, err
+	}
+	return parseZoneSettings(zone, settings)
+}
+
+func parseZoneSettings(zone string, settings map[string]dbus.Variant) (*Zone, error) {
+	z := &Zone{Name: zone}
+
+	if v, ok := settings["services"]; ok {
+		z.Services = toStringSlice(v.Value())
+	}
+	if v, ok := settings["interfaces"]; ok {
+		z.Interfaces = toStringSlice(v.Value())
+	}
+	if v, ok := settings["sources"]; ok {
+		z.Sources = toStringSlice(v.Value())
+	}
+	if v, ok := settings["masquerade"]; ok {
+		if val, ok := v.Value().(bool); ok {
+			z.Masquerade = val
+		}
+	}
+	if v, ok := settings["rules_str"]; ok {
+		z.RichRules = toStringSlice(v.Value())
+	}
+	if v, ok := settings["ports"]; ok {
+		ports, err := toPorts(v.Value())
+		if err != nil {
+			return nil, err
+		}
+		z.Ports = ports
+	}
+
+	return z, nil
+}
+
+func toStringSlice(value any) []string {
+	switch v := value.(type) {
+	case []string:
+		return v
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func toPorts(value any) ([]Port, error) {
+	switch v := value.(type) {
+	case [][]string:
+		return portsFromStringPairs(v)
+	case []dbus.Struct:
+		pairs := make([][]string, 0, len(v))
+		for _, entry := range v {
+			if len(entry.Fields) < 2 {
+				continue
+			}
+			pair := []string{}
+			if s, ok := entry.Fields[0].(string); ok {
+				pair = append(pair, s)
+			}
+			if s, ok := entry.Fields[1].(string); ok {
+				pair = append(pair, s)
+			}
+			if len(pair) == 2 {
+				pairs = append(pairs, pair)
+			}
+		}
+		return portsFromStringPairs(pairs)
+	case []interface{}:
+		pairs := make([][]string, 0, len(v))
+		for _, entry := range v {
+			switch item := entry.(type) {
+			case []string:
+				if len(item) >= 2 {
+					pairs = append(pairs, item[:2])
+				}
+			case []interface{}:
+				if len(item) >= 2 {
+					a, aok := item[0].(string)
+					b, bok := item[1].(string)
+					if aok && bok {
+						pairs = append(pairs, []string{a, b})
+					}
+				}
+			case dbus.Struct:
+				if len(item.Fields) >= 2 {
+					a, aok := item.Fields[0].(string)
+					b, bok := item.Fields[1].(string)
+					if aok && bok {
+						pairs = append(pairs, []string{a, b})
+					}
+				}
+			}
+		}
+		return portsFromStringPairs(pairs)
+	default:
+		return nil, nil
+	}
+}
+
+func portsFromStringPairs(pairs [][]string) ([]Port, error) {
+	ports := make([]Port, 0, len(pairs))
+	for _, pair := range pairs {
+		if len(pair) < 2 {
+			continue
+		}
+		number, err := strconv.Atoi(pair[0])
+		if err != nil {
+			return nil, fmt.Errorf("invalid port number %q: %w", pair[0], err)
+		}
+		ports = append(ports, Port{Number: number, Protocol: pair[1]})
+	}
+	return ports, nil
 }
