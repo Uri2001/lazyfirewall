@@ -24,6 +24,7 @@ type defaultZoneMsg struct {
 type zoneDataMsg struct {
 	data *models.ZoneData
 	err  error
+	perm bool
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -68,7 +69,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.debugMode = !m.debugMode
 		case "P":
 			m.permanent = !m.permanent
+			m.zoneData = m.selectActiveData()
 			return m, m.fetchSelectedZone()
+		case "S":
+			m.splitView = !m.splitView
 		case "r":
 			return m, tea.Batch(fetchZonesCmd(m.client), fetchActiveZonesCmd(m.client), fetchDefaultZoneCmd(m.client), m.fetchSelectedZone())
 		}
@@ -98,7 +102,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case zoneDataMsg:
 		m.loading = false
-		m.zoneData = msg.data
+		if msg.perm {
+			m.permaData = msg.data
+		} else {
+			m.runtimeData = msg.data
+		}
+		m.zoneData = m.selectActiveData()
 		if msg.err != nil {
 			m.err = msg.err
 		}
@@ -113,7 +122,23 @@ func (m Model) fetchSelectedZone() tea.Cmd {
 	}
 	m.loading = true
 	zone := m.zones[m.selectedZone]
-	return fetchZoneDataCmd(m.client, zone, m.permanent)
+	return tea.Batch(
+		fetchZoneDataCmd(m.client, zone, false),
+		fetchZoneDataCmd(m.client, zone, true),
+	)
+}
+
+func (m Model) selectActiveData() *models.ZoneData {
+	if m.permanent {
+		if m.permaData != nil {
+			return m.permaData
+		}
+		return m.zoneData
+	}
+	if m.runtimeData != nil {
+		return m.runtimeData
+	}
+	return m.zoneData
 }
 
 func setTab(m Model, idx int) Model {

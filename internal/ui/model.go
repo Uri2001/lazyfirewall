@@ -34,9 +34,12 @@ type Model struct {
 	activeZones map[string][]string
 	defaultZone string
 	zoneData    *models.ZoneData
+	runtimeData *models.ZoneData
+	permaData   *models.ZoneData
 	loading     bool
 	debugMode   bool
 	permanent   bool
+	splitView   bool
 
 	tab mainTab
 

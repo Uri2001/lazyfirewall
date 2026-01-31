@@ -5,6 +5,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"lazyfirewall/internal/firewalld"
+	"lazyfirewall/internal/models"
 )
 
 var (
@@ -103,21 +106,28 @@ func (m Model) renderMain() string {
 	if m.permanent {
 		mode = "Permanent"
 	}
-	b.WriteString("Selected: " + zone + " [" + mode + "]\n\n")
-	b.WriteString(m.renderTabs())
-	b.WriteString("\n\n")
+	if m.splitView {
+		b.WriteString("Selected: " + zone + " [Split]\n\n")
+		b.WriteString(m.renderTabs())
+		b.WriteString("\n\n")
+		b.WriteString(m.renderSplit())
+	} else {
+		b.WriteString("Selected: " + zone + " [" + mode + "]\n\n")
+		b.WriteString(m.renderTabs())
+		b.WriteString("\n\n")
 
-	switch m.tab {
-	case tabServices:
-		b.WriteString(m.renderServices())
-	case tabPorts:
-		b.WriteString(m.renderPorts())
-	case tabRules:
-		b.WriteString(m.renderRules())
-	case tabMasquerade:
-		b.WriteString(m.renderMasquerade())
-	case tabInfo:
-		b.WriteString(m.renderInfo())
+		switch m.tab {
+		case tabServices:
+			b.WriteString(m.renderServices())
+		case tabPorts:
+			b.WriteString(m.renderPorts())
+		case tabRules:
+			b.WriteString(m.renderRules())
+		case tabMasquerade:
+			b.WriteString(m.renderMasquerade())
+		case tabInfo:
+			b.WriteString(m.renderInfo())
+		}
 	}
 
 	return mainStyle.Render(b.String())
@@ -128,7 +138,11 @@ func (m Model) renderFooter() string {
 	if m.permanent {
 		mode = "P"
 	}
-	return "[q] Quit  [tab] Switch Panel  [↑↓] Navigate  [h/l] Tabs  [1-5] Jump  [P] Mode(" + mode + ")  [D] Debug  [r] Refresh"
+	split := "Off"
+	if m.splitView {
+		split = "On"
+	}
+	return "[q] Quit  [tab] Switch Panel  [↑↓] Navigate  [h/l] Tabs  [1-5] Jump  [P] Mode(" + mode + ")  [S] Split(" + split + ")  [D] Debug  [r] Refresh"
 }
 
 func (m Model) renderTabs() string {
@@ -150,9 +164,9 @@ func (m Model) renderServices() string {
 	}
 	var b strings.Builder
 	for i, service := range m.zoneData.Services {
-		line := "  " + service
+		line := "  " + markerForService(m.runtimeData, m.permaData, service, m.permanent) + " " + service
 		if i == m.selectedService && m.focus == focusMain {
-			line = selectedStyle.Render("› " + service)
+			line = selectedStyle.Render("› " + markerForService(m.runtimeData, m.permaData, service, m.permanent) + " " + service)
 		}
 		b.WriteString(line + "\n")
 	}
@@ -165,9 +179,10 @@ func (m Model) renderPorts() string {
 	}
 	var b strings.Builder
 	for i, port := range m.zoneData.Ports {
-		line := "  " + port.Protocol + " " + itoa(port.Number)
+		key := portKey(port)
+		line := "  " + markerForPort(m.runtimeData, m.permaData, key, m.permanent) + " " + port.Protocol + " " + itoa(port.Number)
 		if i == m.selectedPort && m.focus == focusMain {
-			line = selectedStyle.Render("› " + port.Protocol + " " + itoa(port.Number))
+			line = selectedStyle.Render("› " + markerForPort(m.runtimeData, m.permaData, key, m.permanent) + " " + port.Protocol + " " + itoa(port.Number))
 		}
 		b.WriteString(line + "\n")
 	}
@@ -180,9 +195,9 @@ func (m Model) renderRules() string {
 	}
 	var b strings.Builder
 	for i, rule := range m.zoneData.RichRules {
-		line := "  " + rule
+		line := "  " + markerForRule(m.runtimeData, m.permaData, rule, m.permanent) + " " + rule
 		if i == m.selectedRule && m.focus == focusMain {
-			line = selectedStyle.Render("› " + rule)
+			line = selectedStyle.Render("› " + markerForRule(m.runtimeData, m.permaData, rule, m.permanent) + " " + rule)
 		}
 		b.WriteString(line + "\n")
 	}
@@ -221,6 +236,125 @@ func (m Model) renderInfo() string {
 	b.WriteString("Interfaces: " + strings.Join(m.zoneData.Interfaces, ", ") + "\n")
 	b.WriteString("Sources: " + strings.Join(m.zoneData.Sources, ", ") + "\n")
 	return b.String()
+}
+
+func (m Model) renderSplit() string {
+	switch m.tab {
+	case tabServices:
+		return renderSplitList("Runtime", "Permanent",
+			diffListStrings(m.runtimeData.Services, m.permaData.Services))
+	case tabPorts:
+		return renderSplitList("Runtime", "Permanent",
+			diffListStrings(portsToKeys(m.runtimeData.Ports), portsToKeys(m.permaData.Ports)))
+	case tabRules:
+		return renderSplitList("Runtime", "Permanent",
+			diffListStrings(m.runtimeData.RichRules, m.permaData.RichRules))
+	default:
+		return "Split view available for Services/Ports/Rich Rules only."
+	}
+}
+
+type diffList struct {
+	left  []string
+	right []string
+}
+
+func diffListStrings(runtime, permanent []string) diffList {
+	rt := make(map[string]struct{}, len(runtime))
+	pm := make(map[string]struct{}, len(permanent))
+	for _, v := range runtime {
+		rt[v] = struct{}{}
+	}
+	for _, v := range permanent {
+		pm[v] = struct{}{}
+	}
+
+	left := make([]string, 0, len(runtime))
+	for _, v := range runtime {
+		_, inPerm := pm[v]
+		if inPerm {
+			left = append(left, "~ "+v)
+		} else {
+			left = append(left, "+ "+v)
+		}
+	}
+	right := make([]string, 0, len(permanent))
+	for _, v := range permanent {
+		_, inRun := rt[v]
+		if inRun {
+			right = append(right, "~ "+v)
+		} else {
+			right = append(right, "- "+v)
+		}
+	}
+
+	return diffList{left: left, right: right}
+}
+
+func renderSplitList(leftTitle, rightTitle string, lists diffList) string {
+	left := append([]string{leftTitle}, lists.left...)
+	right := append([]string{rightTitle}, lists.right...)
+	leftBlock := strings.Join(left, "\n")
+	rightBlock := strings.Join(right, "\n")
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		lipgloss.NewStyle().Width(30).Render(leftBlock),
+		lipgloss.NewStyle().Width(30).Render(rightBlock),
+	)
+}
+
+func markerForService(runtime, permanent *models.ZoneData, service string, viewingPermanent bool) string {
+	inRun := containsString(runtime.Services, service)
+	inPerm := containsString(permanent.Services, service)
+	return pickMarker(inRun, inPerm, viewingPermanent)
+}
+
+func markerForRule(runtime, permanent *models.ZoneData, rule string, viewingPermanent bool) string {
+	inRun := containsString(runtime.RichRules, rule)
+	inPerm := containsString(permanent.RichRules, rule)
+	return pickMarker(inRun, inPerm, viewingPermanent)
+}
+
+func markerForPort(runtime, permanent *models.ZoneData, portKey string, viewingPermanent bool) string {
+	inRun := containsString(portsToKeys(runtime.Ports), portKey)
+	inPerm := containsString(portsToKeys(permanent.Ports), portKey)
+	return pickMarker(inRun, inPerm, viewingPermanent)
+}
+
+func pickMarker(inRun, inPerm, viewingPermanent bool) string {
+	if inRun && inPerm {
+		return "💾"
+	}
+	if viewingPermanent {
+		if inPerm {
+			return "💾"
+		}
+		return "⚡"
+	}
+	if inRun {
+		return "⚡"
+	}
+	return "💾"
+}
+
+func containsString(list []string, value string) bool {
+	for _, item := range list {
+		if item == value {
+			return true
+		}
+	}
+	return false
+}
+
+func portsToKeys(ports []firewalld.Port) []string {
+	keys := make([]string, 0, len(ports))
+	for _, port := range ports {
+		keys = append(keys, portKey(port))
+	}
+	return keys
+}
+
+func portKey(port firewalld.Port) string {
+	return strconv.Itoa(port.Number) + "/" + port.Protocol
 }
 
 func (m Model) renderDebug() string {

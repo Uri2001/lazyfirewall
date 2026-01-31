@@ -77,6 +77,7 @@ func fetchZoneDataCmd(client *firewalld.Client, zone string, permanent bool) tea
 				RawPorts:   rawPorts,
 				RawDump:    rawDump,
 			},
+			perm: permanent,
 		}
 	}
 }
