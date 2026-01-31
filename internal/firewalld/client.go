@@ -233,9 +233,23 @@ func (c *Client) RawZoneSettingsPermanent(zone string, settings *map[string]dbus
 	}
 
 	var zonePath dbus.ObjectPath
-	if err := c.call(dbusInterface+".config.getZoneByName", &zonePath, zone); err != nil {
-		return err
+	configPath := dbus.ObjectPath(dbusPath + "/config")
+	configObj := c.conn.Object(dbusInterface, configPath)
+
+	tryConfig := func(method string) error {
+		call := configObj.Call(dbusInterface+".config."+method, 0, zone)
+		if call.Err != nil {
+			return call.Err
+		}
+		return call.Store(&zonePath)
 	}
+
+	if err := tryConfig("getZoneByName"); err != nil {
+		if err2 := tryConfig("getZoneByName2"); err2 != nil {
+			return fmt.Errorf("dbus call %s.config.getZoneByName: %w", dbusInterface, err)
+		}
+	}
+
 	obj := c.conn.Object(dbusInterface, zonePath)
 
 	try := func(iface, method string) error {
