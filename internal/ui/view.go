@@ -249,18 +249,18 @@ func (m Model) renderInfo() string {
 func (m Model) renderSplit() string {
 	switch m.tab {
 	case tabServices:
-		return renderSplitList("Runtime", "Permanent",
-			diffListStrings(m.runtimeData.Services, m.permaData.Services))
+		return renderWithLegend(renderSplitList("Runtime", "Permanent",
+			diffListStrings(m.runtimeData.Services, m.permaData.Services)))
 	case tabPorts:
-		return renderSplitList("Runtime", "Permanent",
-			diffListStrings(portsToKeys(m.runtimeData.Ports), portsToKeys(m.permaData.Ports)))
+		return renderWithLegend(renderSplitList("Runtime", "Permanent",
+			diffListStrings(portsToKeys(m.runtimeData.Ports), portsToKeys(m.permaData.Ports))))
 	case tabRules:
-		return renderSplitList("Runtime", "Permanent",
-			diffListStrings(m.runtimeData.RichRules, m.permaData.RichRules))
+		return renderWithLegend(renderSplitList("Runtime", "Permanent",
+			diffListStrings(m.runtimeData.RichRules, m.permaData.RichRules)))
 	case tabMasquerade:
-		return renderSplitMasquerade(m.runtimeData, m.permaData)
+		return renderWithLegend(renderSplitMasquerade(m.runtimeData, m.permaData))
 	case tabInfo:
-		return renderSplitInfo(m.runtimeData, m.permaData)
+		return renderWithLegend(renderSplitInfo(m.runtimeData, m.permaData))
 	default:
 		return "Split view available for Services/Ports/Rich Rules only."
 	}
@@ -312,6 +312,17 @@ func renderSplitList(leftTitle, rightTitle string, lists diffList) string {
 		lipgloss.NewStyle().Width(30).Render(leftBlock),
 		lipgloss.NewStyle().Width(30).Render(rightBlock),
 	)
+}
+
+func renderWithLegend(content string) string {
+	legend := strings.Join([]string{
+		plusStyle.Render("+ Added"),
+		minusStyle.Render("- Removed"),
+		tildeStyle.Render("~ Modified"),
+		savedStyle.Render("💾 Permanent"),
+		runtimeStyle.Render("⚡ Runtime"),
+	}, "  ")
+	return content + "\n\n" + legend
 }
 
 func renderSplitMasquerade(runtime, permanent *models.ZoneData) string {
