@@ -249,6 +249,10 @@ func (m Model) renderSplit() string {
 	case tabRules:
 		return renderSplitList("Runtime", "Permanent",
 			diffListStrings(m.runtimeData.RichRules, m.permaData.RichRules))
+	case tabMasquerade:
+		return renderSplitMasquerade(m.runtimeData, m.permaData)
+	case tabInfo:
+		return renderSplitInfo(m.runtimeData, m.permaData)
 	default:
 		return "Split view available for Services/Ports/Rich Rules only."
 	}
@@ -300,6 +304,74 @@ func renderSplitList(leftTitle, rightTitle string, lists diffList) string {
 		lipgloss.NewStyle().Width(30).Render(leftBlock),
 		lipgloss.NewStyle().Width(30).Render(rightBlock),
 	)
+}
+
+func renderSplitMasquerade(runtime, permanent *models.ZoneData) string {
+	left := []string{"Runtime"}
+	right := []string{"Permanent"}
+	if runtime != nil {
+		left = append(left, "Masquerade: "+onOff(runtime.Masquerade))
+		left = append(left, "")
+		left = append(left, "Interfaces:")
+		left = append(left, formatBulletList(runtime.Interfaces)...)
+		left = append(left, "")
+		left = append(left, "Sources:")
+		left = append(left, formatBulletList(runtime.Sources)...)
+	}
+	if permanent != nil {
+		right = append(right, "Masquerade: "+onOff(permanent.Masquerade))
+		right = append(right, "")
+		right = append(right, "Interfaces:")
+		right = append(right, formatBulletList(permanent.Interfaces)...)
+		right = append(right, "")
+		right = append(right, "Sources:")
+		right = append(right, formatBulletList(permanent.Sources)...)
+	}
+	leftBlock := strings.Join(left, "\n")
+	rightBlock := strings.Join(right, "\n")
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		lipgloss.NewStyle().Width(30).Render(leftBlock),
+		lipgloss.NewStyle().Width(30).Render(rightBlock),
+	)
+}
+
+func renderSplitInfo(runtime, permanent *models.ZoneData) string {
+	left := []string{"Runtime"}
+	right := []string{"Permanent"}
+	if runtime != nil {
+		left = append(left, "Zone: "+runtime.Zone)
+		left = append(left, "Interfaces: "+strings.Join(runtime.Interfaces, ", "))
+		left = append(left, "Sources: "+strings.Join(runtime.Sources, ", "))
+	}
+	if permanent != nil {
+		right = append(right, "Zone: "+permanent.Zone)
+		right = append(right, "Interfaces: "+strings.Join(permanent.Interfaces, ", "))
+		right = append(right, "Sources: "+strings.Join(permanent.Sources, ", "))
+	}
+	leftBlock := strings.Join(left, "\n")
+	rightBlock := strings.Join(right, "\n")
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		lipgloss.NewStyle().Width(30).Render(leftBlock),
+		lipgloss.NewStyle().Width(30).Render(rightBlock),
+	)
+}
+
+func formatBulletList(items []string) []string {
+	if len(items) == 0 {
+		return []string{"  (none)"}
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		out = append(out, "  • "+item)
+	}
+	return out
+}
+
+func onOff(value bool) string {
+	if value {
+		return "ON"
+	}
+	return "OFF"
 }
 
 func markerForService(runtime, permanent *models.ZoneData, service string, viewingPermanent bool) string {
