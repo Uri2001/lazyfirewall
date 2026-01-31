@@ -60,6 +60,10 @@ func (m Model) View() string {
 		return "Error: " + m.err.Error()
 	}
 
+	if m.showHelp {
+		return m.renderHelpModal()
+	}
+
 	sidebarWidth := 20
 	detailsWidth := 34
 	mainWidth := 0
@@ -175,7 +179,9 @@ func (m Model) renderFooter() string {
 	if m.splitView {
 		split = "On"
 	}
-	return "[q] Quit  [tab] Switch Panel  [↑↓] Navigate  [h/l] Tabs  [1-5] Jump  [P] Mode(" + mode + ")  [S] Split(" + split + ")  [D] Debug  [r] Refresh"
+	base := "[q] Quit  [?] Help  [tab] Switch Panel  [r] Refresh"
+	modeInfo := "[P] Mode(" + mode + ")  [S] Split(" + split + ")  [D] Debug"
+	return base + "  " + m.footerContextHints() + "  " + modeInfo
 }
 
 func (m Model) renderTabs() string {
@@ -331,6 +337,58 @@ func (m Model) renderDetails() string {
 	}
 }
 
+func (m Model) footerContextHints() string {
+	if m.focus == focusSidebar {
+		return "[↑↓] Navigate"
+	}
+	if m.focus == focusMain {
+		switch m.tab {
+		case tabServices:
+			return "[↑↓] Select  [h/l] Tabs  [1-5] Jump"
+		case tabPorts:
+			return "[↑↓] Select  [h/l] Tabs  [1-5] Jump"
+		case tabRules:
+			return "[↑↓] Select  [h/l] Tabs  [1-5] Jump"
+		case tabMasquerade, tabInfo:
+			return "[h/l] Tabs  [1-5] Jump"
+		default:
+			return "[h/l] Tabs  [1-5] Jump"
+		}
+	}
+	return ""
+}
+
+func (m Model) renderHelpModal() string {
+	content := strings.Join([]string{
+		"LazyFirewall Help",
+		"",
+		"NAVIGATION",
+		"  Tab / Shift+Tab    Switch panels",
+		"  ↑/↓ or j/k         Navigate lists",
+		"  h/l                Switch tabs",
+		"  1-5                Jump to tab",
+		"",
+		"VIEWS",
+		"  P                  Toggle Runtime/Permanent",
+		"  S                  Toggle split view",
+		"  D                  Toggle debug view",
+		"",
+		"GENERAL",
+		"  r                  Refresh data",
+		"  q / Ctrl+C          Quit",
+		"  ?                  Toggle this help",
+	}, "\n")
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("63")).
+		Padding(1, 2)
+
+	if m.width > 0 {
+		box = box.Width(m.width - 4)
+	}
+	return box.Render(content)
+}
 func (m Model) renderSplit() string {
 	switch m.tab {
 	case tabServices:

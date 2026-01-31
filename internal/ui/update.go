@@ -85,6 +85,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.fetchSelectedZone()
 		case "S":
 			m.splitView = !m.splitView
+		case "?":
+			m.showHelp = !m.showHelp
 		case "r":
 			return m, tea.Batch(fetchZonesCmd(m.client), fetchActiveZonesCmd(m.client), fetchDefaultZoneCmd(m.client), m.fetchSelectedZone())
 		}

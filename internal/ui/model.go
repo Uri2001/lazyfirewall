@@ -40,6 +40,7 @@ type Model struct {
 	debugMode   bool
 	permanent   bool
 	splitView   bool
+	showHelp    bool
 
 	serviceDetails    map[string]*firewalld.ServiceInfo
 	serviceDetailsErr map[string]error
