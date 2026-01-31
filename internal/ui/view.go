@@ -40,6 +40,14 @@ var (
 			Padding(0, 1).
 			Bold(true).
 			Foreground(lipgloss.Color("170"))
+
+	plusStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	minusStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	tildeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	savedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	runtimeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	onStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	offStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 )
 
 func (m Model) View() string {
@@ -296,8 +304,8 @@ func diffListStrings(runtime, permanent []string) diffList {
 }
 
 func renderSplitList(leftTitle, rightTitle string, lists diffList) string {
-	left := append([]string{leftTitle}, lists.left...)
-	right := append([]string{rightTitle}, lists.right...)
+	left := append([]string{leftTitle}, colorizeDiffLines(lists.left)...)
+	right := append([]string{rightTitle}, colorizeDiffLines(lists.right)...)
 	leftBlock := strings.Join(left, "\n")
 	rightBlock := strings.Join(right, "\n")
 	return lipgloss.JoinHorizontal(lipgloss.Top,
@@ -310,7 +318,7 @@ func renderSplitMasquerade(runtime, permanent *models.ZoneData) string {
 	left := []string{"Runtime"}
 	right := []string{"Permanent"}
 	if runtime != nil {
-		left = append(left, "Masquerade: "+onOff(runtime.Masquerade))
+		left = append(left, "Masquerade: "+styledOnOff(runtime.Masquerade))
 		left = append(left, "")
 		left = append(left, "Interfaces:")
 		left = append(left, formatBulletList(runtime.Interfaces)...)
@@ -319,7 +327,7 @@ func renderSplitMasquerade(runtime, permanent *models.ZoneData) string {
 		left = append(left, formatBulletList(runtime.Sources)...)
 	}
 	if permanent != nil {
-		right = append(right, "Masquerade: "+onOff(permanent.Masquerade))
+		right = append(right, "Masquerade: "+styledOnOff(permanent.Masquerade))
 		right = append(right, "")
 		right = append(right, "Interfaces:")
 		right = append(right, formatBulletList(permanent.Interfaces)...)
@@ -374,6 +382,13 @@ func onOff(value bool) string {
 	return "OFF"
 }
 
+func styledOnOff(value bool) string {
+	if value {
+		return onStyle.Render("ON")
+	}
+	return offStyle.Render("OFF")
+}
+
 func markerForService(runtime, permanent *models.ZoneData, service string, viewingPermanent bool) string {
 	inRun := containsString(runtime.Services, service)
 	inPerm := containsString(permanent.Services, service)
@@ -394,18 +409,18 @@ func markerForPort(runtime, permanent *models.ZoneData, portKey string, viewingP
 
 func pickMarker(inRun, inPerm, viewingPermanent bool) string {
 	if inRun && inPerm {
-		return "💾"
+		return savedStyle.Render("💾")
 	}
 	if viewingPermanent {
 		if inPerm {
-			return "💾"
+			return savedStyle.Render("💾")
 		}
-		return "⚡"
+		return runtimeStyle.Render("⚡")
 	}
 	if inRun {
-		return "⚡"
+		return runtimeStyle.Render("⚡")
 	}
-	return "💾"
+	return savedStyle.Render("💾")
 }
 
 func containsString(list []string, value string) bool {
@@ -427,6 +442,27 @@ func portsToKeys(ports []firewalld.Port) []string {
 
 func portKey(port firewalld.Port) string {
 	return strconv.Itoa(port.Number) + "/" + port.Protocol
+}
+
+func colorizeDiffLines(lines []string) []string {
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, colorizeDiffLine(line))
+	}
+	return out
+}
+
+func colorizeDiffLine(line string) string {
+	if strings.HasPrefix(line, "+ ") {
+		return plusStyle.Render(line)
+	}
+	if strings.HasPrefix(line, "- ") {
+		return minusStyle.Render(line)
+	}
+	if strings.HasPrefix(line, "~ ") {
+		return tildeStyle.Render(line)
+	}
+	return line
 }
 
 func (m Model) renderDebug() string {
