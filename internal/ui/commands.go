@@ -81,3 +81,10 @@ func fetchZoneDataCmd(client *firewalld.Client, zone string, permanent bool) tea
 		}
 	}
 }
+
+func fetchServiceDetailsCmd(client *firewalld.Client, name string) tea.Cmd {
+	return func() tea.Msg {
+		info, err := client.GetServiceDetails(name)
+		return serviceDetailsMsg{name: name, info: info, err: err}
+	}
+}

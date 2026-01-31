@@ -21,6 +21,11 @@ var (
 			BorderForeground(lipgloss.Color("63")).
 			Padding(1)
 
+	detailsStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("63")).
+			Padding(1)
+
 	selectedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("170")).
 			Bold(true)
@@ -55,13 +60,33 @@ func (m Model) View() string {
 		return "Error: " + m.err.Error()
 	}
 
-	sidebar := m.renderSidebar()
-	main := m.renderMain()
+	sidebarWidth := 20
+	detailsWidth := 34
+	mainWidth := 0
+	if m.width > 0 {
+		mainWidth = m.width - sidebarWidth - detailsWidth - 4
+		if mainWidth < 20 {
+			mainWidth = 20
+		}
+	}
+
+	sidebar := sidebarStyle
+	main := mainStyle
+	details := detailsStyle
+	if m.width > 0 {
+		sidebar = sidebar.Width(sidebarWidth)
+		main = main.Width(mainWidth)
+		details = details.Width(detailsWidth)
+	}
+
+	sidebarView := sidebar.Render(m.renderSidebar())
+	mainView := main.Render(m.renderMain())
+	detailsView := details.Render(m.renderDetails())
 	footer := m.renderFooter()
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		lipgloss.JoinHorizontal(lipgloss.Top, sidebar, main),
+		lipgloss.JoinHorizontal(lipgloss.Top, sidebarView, mainView, detailsView),
 		footer,
 	)
 }
@@ -91,22 +116,22 @@ func (m Model) renderSidebar() string {
 		b.WriteString(line + "\n")
 	}
 
-	return sidebarStyle.Render(b.String())
+	return b.String()
 }
 
 func (m Model) renderMain() string {
 	if len(m.zones) == 0 {
-		return mainStyle.Render("Loading...")
+		return "Loading..."
 	}
 	zone := m.zones[m.selectedZone]
 	if m.loading {
-		return mainStyle.Render("Loading zone data...")
+		return "Loading zone data..."
 	}
 	if m.zoneData == nil {
-		return mainStyle.Render("No data for zone: " + zone)
+		return "No data for zone: " + zone
 	}
 	if m.debugMode {
-		return mainStyle.Render(m.renderDebug())
+		return m.renderDebug()
 	}
 
 	var b strings.Builder
@@ -138,7 +163,7 @@ func (m Model) renderMain() string {
 		}
 	}
 
-	return mainStyle.Render(b.String())
+	return b.String()
 }
 
 func (m Model) renderFooter() string {
@@ -244,6 +269,66 @@ func (m Model) renderInfo() string {
 	b.WriteString("Interfaces: " + strings.Join(m.zoneData.Interfaces, ", ") + "\n")
 	b.WriteString("Sources: " + strings.Join(m.zoneData.Sources, ", ") + "\n")
 	return b.String()
+}
+
+func (m Model) renderDetails() string {
+	if m.zoneData == nil {
+		return "Details"
+	}
+	if m.tab == tabServices {
+		if len(m.zoneData.Services) == 0 {
+			return "Details\n\n(no services)"
+		}
+		name := m.zoneData.Services[m.selectedService]
+		if m.serviceLoading[name] {
+			return "Details\n\nLoading " + name + "..."
+		}
+		if err := m.serviceDetailsErr[name]; err != nil {
+			return "Details\n\n" + name + "\n" + err.Error()
+		}
+		if info := m.serviceDetails[name]; info != nil {
+			var b strings.Builder
+			b.WriteString("Details\n\n")
+			b.WriteString(name + "\n\n")
+			if len(info.Ports) > 0 {
+				b.WriteString("Ports:\n")
+				for _, port := range info.Ports {
+					b.WriteString("  • " + port.Protocol + " " + itoa(port.Number) + "\n")
+				}
+				b.WriteString("\n")
+			}
+			if len(info.Modules) > 0 {
+				b.WriteString("Modules:\n")
+				b.WriteString("  " + strings.Join(info.Modules, ", ") + "\n\n")
+			}
+			if info.Description != "" {
+				b.WriteString("Description:\n")
+				b.WriteString("  " + info.Description + "\n")
+			}
+			return b.String()
+		}
+		return "Details\n\n" + name
+	}
+
+	switch m.tab {
+	case tabPorts:
+		if len(m.zoneData.Ports) == 0 {
+			return "Details\n\n(no ports)"
+		}
+		port := m.zoneData.Ports[m.selectedPort]
+		return "Details\n\n" + port.Protocol + " " + itoa(port.Number)
+	case tabRules:
+		if len(m.zoneData.RichRules) == 0 {
+			return "Details\n\n(no rules)"
+		}
+		return "Details\n\n" + m.zoneData.RichRules[m.selectedRule]
+	case tabMasquerade:
+		return "Details\n\nMasquerade: " + onOff(m.zoneData.Masquerade)
+	case tabInfo:
+		return "Details\n\nZone: " + m.zoneData.Zone
+	default:
+		return "Details"
+	}
 }
 
 func (m Model) renderSplit() string {

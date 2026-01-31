@@ -3,6 +3,7 @@ package ui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
+	"lazyfirewall/internal/firewalld"
 	"lazyfirewall/internal/models"
 )
 
@@ -27,6 +28,12 @@ type zoneDataMsg struct {
 	perm bool
 }
 
+type serviceDetailsMsg struct {
+	name string
+	info *firewalld.ServiceInfo
+	err  error
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -43,7 +50,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.fetchSelectedZone()
 			}
 			if m.focus == focusMain {
-				m = advanceSelection(m, 1)
+				m, cmd := advanceSelection(m, 1)
+				return m, cmd
 			}
 		case "k", "up":
 			if m.focus == focusSidebar && m.selectedZone > 0 {
@@ -51,19 +59,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.fetchSelectedZone()
 			}
 			if m.focus == focusMain {
-				m = advanceSelection(m, -1)
+				m, cmd := advanceSelection(m, -1)
+				return m, cmd
 			}
 		case "h", "left":
 			if m.focus == focusMain {
 				m = setTab(m, int(m.tab)-1)
+				return m, maybeFetchServiceDetails(m)
 			}
 		case "l", "right":
 			if m.focus == focusMain {
 				m = setTab(m, int(m.tab)+1)
+				return m, maybeFetchServiceDetails(m)
 			}
 		case "1", "2", "3", "4", "5":
 			if m.focus == focusMain {
 				m = setTab(m, int(msg.String()[0]-'1'))
+				return m, maybeFetchServiceDetails(m)
 			}
 		case "D":
 			m.debugMode = !m.debugMode
@@ -108,8 +120,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.runtimeData = msg.data
 		}
 		m.zoneData = m.selectActiveData()
+		if m.zoneData != nil {
+			m.selectedService = clampIndex(m.selectedService, len(m.zoneData.Services))
+			m.selectedPort = clampIndex(m.selectedPort, len(m.zoneData.Ports))
+			m.selectedRule = clampIndex(m.selectedRule, len(m.zoneData.RichRules))
+		}
 		if msg.err != nil {
 			m.err = msg.err
+		}
+		return m, maybeFetchServiceDetails(m)
+
+	case serviceDetailsMsg:
+		m.serviceLoading[msg.name] = false
+		if msg.err != nil {
+			m.serviceDetailsErr[msg.name] = msg.err
+		} else {
+			m.serviceDetails[msg.name] = msg.info
 		}
 	}
 
@@ -152,7 +178,7 @@ func setTab(m Model, idx int) Model {
 	return m
 }
 
-func advanceSelection(m Model, delta int) Model {
+func advanceSelection(m Model, delta int) (Model, tea.Cmd) {
 	switch m.tab {
 	case tabServices:
 		max := 0
@@ -160,6 +186,7 @@ func advanceSelection(m Model, delta int) Model {
 			max = len(m.zoneData.Services)
 		}
 		m.selectedService = clampIndex(m.selectedService+delta, max)
+		return m, maybeFetchServiceDetails(m)
 	case tabPorts:
 		max := 0
 		if m.zoneData != nil {
@@ -173,7 +200,7 @@ func advanceSelection(m Model, delta int) Model {
 		}
 		m.selectedRule = clampIndex(m.selectedRule+delta, max)
 	}
-	return m
+	return m, nil
 }
 
 func clampIndex(value, max int) int {
@@ -187,4 +214,19 @@ func clampIndex(value, max int) int {
 		return max - 1
 	}
 	return value
+}
+
+func maybeFetchServiceDetails(m Model) tea.Cmd {
+	if m.tab != tabServices || m.zoneData == nil || m.selectedService >= len(m.zoneData.Services) {
+		return nil
+	}
+	name := m.zoneData.Services[m.selectedService]
+	if name == "" {
+		return nil
+	}
+	if m.serviceDetails[name] != nil || m.serviceLoading[name] {
+		return nil
+	}
+	m.serviceLoading[name] = true
+	return fetchServiceDetailsCmd(m.client, name)
 }

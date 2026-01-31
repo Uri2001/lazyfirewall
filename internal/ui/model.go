@@ -41,6 +41,10 @@ type Model struct {
 	permanent   bool
 	splitView   bool
 
+	serviceDetails    map[string]*firewalld.ServiceInfo
+	serviceDetailsErr map[string]error
+	serviceLoading    map[string]bool
+
 	tab mainTab
 
 	selectedZone    int
@@ -57,9 +61,12 @@ type Model struct {
 
 func NewModel(client *firewalld.Client) Model {
 	return Model{
-		client: client,
-		focus:  focusSidebar,
-		tab:    tabServices,
+		client:            client,
+		focus:             focusSidebar,
+		tab:               tabServices,
+		serviceDetails:    map[string]*firewalld.ServiceInfo{},
+		serviceDetailsErr: map[string]error{},
+		serviceLoading:    map[string]bool{},
 	}
 }
 
