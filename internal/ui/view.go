@@ -167,6 +167,11 @@ func (m Model) renderMain() string {
 		}
 	}
 
+	if m.inputMode != inputNone {
+		b.WriteString("\n")
+		b.WriteString(m.renderInput())
+	}
+
 	return b.String()
 }
 
@@ -181,7 +186,11 @@ func (m Model) renderFooter() string {
 	}
 	base := "[q] Quit  [?] Help  [tab] Switch Panel  [r] Refresh"
 	modeInfo := "[P] Mode(" + mode + ")  [S] Split(" + split + ")  [D] Debug"
-	return base + "  " + m.footerContextHints() + "  " + modeInfo
+	status := ""
+	if m.status != "" {
+		status = "  " + m.status
+	}
+	return base + "  " + m.footerContextHints() + "  " + modeInfo + status
 }
 
 func (m Model) renderTabs() string {
@@ -337,6 +346,21 @@ func (m Model) renderDetails() string {
 	}
 }
 
+func (m Model) renderInput() string {
+	label := ""
+	switch m.inputMode {
+	case inputAddService:
+		label = "Service: "
+	case inputAddPort:
+		label = "Port: "
+	}
+	line := label + m.textInput.View()
+	if m.inputErr != "" {
+		return line + "\n" + m.inputErr
+	}
+	return line
+}
+
 func (m Model) footerContextHints() string {
 	if m.focus == focusSidebar {
 		return "[↑↓] Navigate"
@@ -344,9 +368,9 @@ func (m Model) footerContextHints() string {
 	if m.focus == focusMain {
 		switch m.tab {
 		case tabServices:
-			return "[↑↓] Select  [h/l] Tabs  [1-5] Jump"
+			return "[↑↓] Select  [h/l] Tabs  [1-5] Jump  [a] Add  [d/Space] Remove"
 		case tabPorts:
-			return "[↑↓] Select  [h/l] Tabs  [1-5] Jump"
+			return "[↑↓] Select  [h/l] Tabs  [1-5] Jump  [a] Add  [d] Remove"
 		case tabRules:
 			return "[↑↓] Select  [h/l] Tabs  [1-5] Jump"
 		case tabMasquerade, tabInfo:
@@ -372,6 +396,11 @@ func (m Model) renderHelpModal() string {
 		"  P                  Toggle Runtime/Permanent",
 		"  S                  Toggle split view",
 		"  D                  Toggle debug view",
+		"",
+		"ACTIONS",
+		"  a                  Add service/port",
+		"  d                  Remove service/port",
+		"  Space              Toggle service",
 		"",
 		"GENERAL",
 		"  r                  Refresh data",

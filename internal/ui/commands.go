@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"strconv"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/godbus/dbus/v5"
@@ -86,5 +87,45 @@ func fetchServiceDetailsCmd(client *firewalld.Client, name string) tea.Cmd {
 	return func() tea.Msg {
 		info, err := client.GetServiceDetails(name)
 		return serviceDetailsMsg{name: name, info: info, err: err}
+	}
+}
+
+func addServiceCmd(client *firewalld.Client, zone, service string, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		err := client.AddService(zone, service, permanent)
+		if err != nil {
+			return mutationMsg{err: err}
+		}
+		return mutationMsg{notice: "service added: " + service}
+	}
+}
+
+func removeServiceCmd(client *firewalld.Client, zone, service string, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		err := client.RemoveService(zone, service, permanent)
+		if err != nil {
+			return mutationMsg{err: err}
+		}
+		return mutationMsg{notice: "service removed: " + service}
+	}
+}
+
+func addPortCmd(client *firewalld.Client, zone string, port firewalld.Port, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		err := client.AddPort(zone, port, permanent)
+		if err != nil {
+			return mutationMsg{err: err}
+		}
+		return mutationMsg{notice: "port added: " + port.Protocol + " " + strconv.Itoa(port.Number)}
+	}
+}
+
+func removePortCmd(client *firewalld.Client, zone string, port firewalld.Port, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		err := client.RemovePort(zone, port, permanent)
+		if err != nil {
+			return mutationMsg{err: err}
+		}
+		return mutationMsg{notice: "port removed: " + port.Protocol + " " + strconv.Itoa(port.Number)}
 	}
 }

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"lazyfirewall/internal/firewalld"
@@ -27,6 +28,14 @@ const (
 	tabInfo
 )
 
+type inputMode int
+
+const (
+	inputNone inputMode = iota
+	inputAddService
+	inputAddPort
+)
+
 type Model struct {
 	client *firewalld.Client
 
@@ -48,6 +57,11 @@ type Model struct {
 
 	tab mainTab
 
+	inputMode inputMode
+	textInput textinput.Model
+	inputErr  string
+	status    string
+
 	selectedZone    int
 	focus           focusPanel
 	selectedService int
@@ -61,10 +75,14 @@ type Model struct {
 }
 
 func NewModel(client *firewalld.Client) Model {
+	ti := textinput.New()
+	ti.CharLimit = 64
+	ti.Prompt = ""
 	return Model{
 		client:            client,
 		focus:             focusSidebar,
 		tab:               tabServices,
+		textInput:         ti,
 		serviceDetails:    map[string]*firewalld.ServiceInfo{},
 		serviceDetailsErr: map[string]error{},
 		serviceLoading:    map[string]bool{},

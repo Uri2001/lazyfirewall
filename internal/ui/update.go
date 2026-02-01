@@ -1,6 +1,11 @@
 package ui
 
 import (
+	"errors"
+	"strconv"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"lazyfirewall/internal/firewalld"
@@ -34,9 +39,17 @@ type serviceDetailsMsg struct {
 	err  error
 }
 
+type mutationMsg struct {
+	notice string
+	err    error
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.inputMode != inputNone {
+			return m.handleInput(msg)
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -87,6 +100,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.splitView = !m.splitView
 		case "?":
 			m.showHelp = !m.showHelp
+		case "a":
+			if m.focus == focusMain {
+				if m.tab == tabServices {
+					return m.startInput(inputAddService, "Add service")
+				}
+				if m.tab == tabPorts {
+					return m.startInput(inputAddPort, "Add port (e.g. 8080/tcp)")
+				}
+			}
+		case "d":
+			if m.focus == focusMain {
+				return m.handleDelete()
+			}
+		case " ":
+			if m.focus == focusMain && m.tab == tabServices {
+				return m.handleDelete()
+			}
 		case "r":
 			return m, tea.Batch(fetchZonesCmd(m.client), fetchActiveZonesCmd(m.client), fetchDefaultZoneCmd(m.client), m.fetchSelectedZone())
 		}
@@ -138,6 +168,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.serviceDetailsErr[msg.name] = msg.err
 		} else {
 			m.serviceDetails[msg.name] = msg.info
+		}
+
+	case mutationMsg:
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.status = msg.notice
+			return m, m.fetchSelectedZone()
 		}
 	}
 
@@ -231,4 +269,113 @@ func maybeFetchServiceDetails(m Model) tea.Cmd {
 	}
 	m.serviceLoading[name] = true
 	return fetchServiceDetailsCmd(m.client, name)
+}
+
+func (m Model) startInput(mode inputMode, placeholder string) (Model, tea.Cmd) {
+	m.inputMode = mode
+	m.inputErr = ""
+	m.textInput.SetValue("")
+	m.textInput.Placeholder = placeholder
+	m.textInput.Focus()
+	return m, textinput.Blink
+}
+
+func (m Model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.inputMode = inputNone
+		m.inputErr = ""
+		m.textInput.Blur()
+		return m, nil
+	case "enter":
+		value := strings.TrimSpace(m.textInput.Value())
+		if value == "" {
+			m.inputErr = "value required"
+			return m, nil
+		}
+		m.textInput.Blur()
+		mode := m.inputMode
+		m.inputMode = inputNone
+		switch mode {
+		case inputAddService:
+			return m, addServiceCmd(m.client, m.currentZone(), value, m.permanent)
+		case inputAddPort:
+			port, err := parsePortInput(value)
+			if err != nil {
+				m.inputErr = err.Error()
+				return m, nil
+			}
+			return m, addPortCmd(m.client, m.currentZone(), port, m.permanent)
+		}
+	}
+
+	var cmd tea.Cmd
+	m.textInput, cmd = m.textInput.Update(msg)
+	return m, cmd
+}
+
+func (m Model) handleDelete() (tea.Model, tea.Cmd) {
+	switch m.tab {
+	case tabServices:
+		if m.zoneData == nil || len(m.zoneData.Services) == 0 {
+			return m, nil
+		}
+		service := m.zoneData.Services[m.selectedService]
+		return m, removeServiceCmd(m.client, m.currentZone(), service, m.permanent)
+	case tabPorts:
+		if m.zoneData == nil || len(m.zoneData.Ports) == 0 {
+			return m, nil
+		}
+		port := m.zoneData.Ports[m.selectedPort]
+		return m, removePortCmd(m.client, m.currentZone(), port, m.permanent)
+	default:
+		return m, nil
+	}
+}
+
+func (m Model) currentZone() string {
+	if m.selectedZone < 0 || m.selectedZone >= len(m.zones) {
+		return ""
+	}
+	return m.zones[m.selectedZone]
+}
+
+func parsePortInput(value string) (firewalld.Port, error) {
+	raw := strings.TrimSpace(value)
+	if raw == "" {
+		return firewalld.Port{}, errors.New("port is empty")
+	}
+	if strings.Contains(raw, "/") {
+		p, err := firewalld.ParsePortString(raw)
+		if err != nil {
+			return firewalld.Port{}, err
+		}
+		return validatePort(p)
+	}
+
+	parts := strings.Fields(raw)
+	if len(parts) != 2 {
+		return firewalld.Port{}, errors.New("expected format: 8080/tcp or '8080 tcp'")
+	}
+	var port firewalld.Port
+	if n, err := strconv.Atoi(parts[0]); err == nil {
+		port = firewalld.Port{Number: n, Protocol: parts[1]}
+	} else if n, err := strconv.Atoi(parts[1]); err == nil {
+		port = firewalld.Port{Number: n, Protocol: parts[0]}
+	} else {
+		return firewalld.Port{}, errors.New("invalid port number")
+	}
+	return validatePort(port)
+}
+
+func validatePort(port firewalld.Port) (firewalld.Port, error) {
+	if port.Number <= 0 || port.Number > 65535 {
+		return firewalld.Port{}, errors.New("port must be 1-65535")
+	}
+	switch port.Protocol {
+	case "tcp", "udp", "sctp", "dccp":
+		return port, nil
+	default:
+		return firewalld.Port{}, errors.New("protocol must be tcp/udp/sctp/dccp")
+	}
 }

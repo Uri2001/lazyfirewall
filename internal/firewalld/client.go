@@ -154,6 +154,40 @@ func (c *Client) GetSources(zone string) ([]string, error) {
 	return settings.Sources, nil
 }
 
+func (c *Client) AddService(zone, service string, permanent bool) error {
+	if service == "" {
+		return errors.New("service name is empty")
+	}
+	return c.call(dbusInterface+".zone.addService", nil, zone, service, permanent)
+}
+
+func (c *Client) RemoveService(zone, service string, permanent bool) error {
+	if service == "" {
+		return errors.New("service name is empty")
+	}
+	return c.call(dbusInterface+".zone.removeService", nil, zone, service, permanent)
+}
+
+func (c *Client) AddPort(zone string, port Port, permanent bool) error {
+	if port.Number <= 0 || port.Number > 65535 {
+		return errors.New("invalid port number")
+	}
+	if port.Protocol == "" {
+		return errors.New("protocol is empty")
+	}
+	return c.call(dbusInterface+".zone.addPort", nil, zone, strconv.Itoa(port.Number), port.Protocol, permanent)
+}
+
+func (c *Client) RemovePort(zone string, port Port, permanent bool) error {
+	if port.Number <= 0 || port.Number > 65535 {
+		return errors.New("invalid port number")
+	}
+	if port.Protocol == "" {
+		return errors.New("protocol is empty")
+	}
+	return c.call(dbusInterface+".zone.removePort", nil, zone, strconv.Itoa(port.Number), port.Protocol, permanent)
+}
+
 func (c *Client) call(method string, out any, args ...any) error {
 	if c == nil || c.obj == nil {
 		return errors.New("firewalld client not initialized")
@@ -181,7 +215,7 @@ func (c *Client) getPortsByArgs(args ...any) ([]Port, error) {
 	if err := call.Store(&stringPorts); err == nil {
 		ports := make([]Port, 0, len(stringPorts))
 		for _, entry := range stringPorts {
-			port, err := parsePortString(entry)
+			port, err := ParsePortString(entry)
 			if err != nil {
 				return nil, err
 			}
@@ -203,7 +237,7 @@ func (c *Client) getPortsByArgs(args ...any) ([]Port, error) {
 	return nil, nil
 }
 
-func parsePortString(value string) (Port, error) {
+func ParsePortString(value string) (Port, error) {
 	parts := strings.Split(value, "/")
 	if len(parts) != 2 {
 		return Port{}, fmt.Errorf("invalid port format %q", value)
@@ -406,7 +440,7 @@ func toPorts(value any) ([]Port, error) {
 	case []string:
 		ports := make([]Port, 0, len(v))
 		for _, entry := range v {
-			port, err := parsePortString(entry)
+			port, err := ParsePortString(entry)
 			if err != nil {
 				return nil, err
 			}
