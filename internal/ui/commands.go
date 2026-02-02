@@ -86,3 +86,17 @@ func removePortCmd(client *firewalld.Client, zone string, port firewalld.Port, p
 		return mutationMsg{zone: zone, err: err}
 	}
 }
+
+func commitRuntimeCmd(client *firewalld.Client, zone string) tea.Cmd {
+	return func() tea.Msg {
+		err := client.RuntimeToPermanent()
+		return mutationMsg{zone: zone, err: err}
+	}
+}
+
+func reloadCmd(client *firewalld.Client, zone string) tea.Cmd {
+	return func() tea.Msg {
+		err := client.Reload()
+		return mutationMsg{zone: zone, err: err}
+	}
+}

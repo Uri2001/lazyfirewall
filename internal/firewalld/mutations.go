@@ -104,3 +104,23 @@ func (c *Client) RemovePortRuntime(zone string, port Port) error {
 	method := dbusInterface + ".zone.removePort"
 	return c.call(method, nil, zone, port.Port, port.Protocol)
 }
+
+func (c *Client) RuntimeToPermanent() error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+
+	slog.Info("committing runtime to permanent")
+	method := dbusInterface + ".runtimeToPermanent"
+	return c.call(method, nil)
+}
+
+func (c *Client) Reload() error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+
+	slog.Info("reloading firewalld")
+	method := dbusInterface + ".reload"
+	return c.call(method, nil)
+}

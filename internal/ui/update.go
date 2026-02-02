@@ -65,6 +65,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			m.err = nil
 			return m, fetchZonesCmd(m.client)
+		case "c":
+			if len(m.zones) == 0 {
+				return m, nil
+			}
+			m.loading = true
+			m.err = nil
+			m.pendingZone = m.zones[m.selected]
+			return m, commitRuntimeCmd(m.client, m.zones[m.selected])
+		case "u":
+			if len(m.zones) == 0 {
+				return m, nil
+			}
+			m.loading = true
+			m.err = nil
+			m.pendingZone = m.zones[m.selected]
+			return m, reloadCmd(m.client, m.zones[m.selected])
 		case "P":
 			m.permanent = !m.permanent
 			if len(m.zones) > 0 && m.selected < len(m.zones) {
