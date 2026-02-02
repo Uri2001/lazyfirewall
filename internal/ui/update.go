@@ -26,16 +26,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				return m, tea.Quit
 			case "esc":
+				if m.inputMode == inputSearch {
+					m.searchQuery = ""
+					m.input.SetValue("")
+				}
 				m.inputMode = inputNone
 				m.input.Blur()
 				return m, nil
 			case "enter":
+				if m.inputMode == inputSearch {
+					m.inputMode = inputNone
+					m.input.Blur()
+					return m, nil
+				}
 				return m, m.submitInput()
 			}
 		}
 
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
+		if m.inputMode == inputSearch {
+			m.searchQuery = m.input.Value()
+			m.applySearchSelection()
+		}
 		return m, cmd
 	}
 
@@ -63,6 +76,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "S":
 			m.splitView = !m.splitView
+			return m, nil
+		case "/":
+			if m.splitView {
+				m.err = fmt.Errorf("search disabled in split view")
+				return m, nil
+			}
+			m.err = nil
+			m.inputMode = inputSearch
+			m.input.Placeholder = "search"
+			m.input.SetValue(m.searchQuery)
+			m.input.CursorEnd()
+			m.input.Focus()
+			return m, nil
+		case "n":
+			if m.searchQuery != "" && !m.splitView && m.focus == focusMain {
+				m.moveMatchSelection(true)
+			}
+			return m, nil
+		case "N":
+			if m.searchQuery != "" && !m.splitView && m.focus == focusMain {
+				m.moveMatchSelection(false)
+			}
 			return m, nil
 		case "r":
 			m.loading = true
@@ -218,6 +253,10 @@ func (m *Model) moveMainSelection(delta int) {
 	if current == nil {
 		return
 	}
+	if m.searchQuery != "" {
+		m.moveMatchSelection(delta > 0)
+		return
+	}
 	switch m.tab {
 	case tabServices:
 		if len(current.Services) == 0 {
@@ -244,6 +283,37 @@ func (m *Model) moveMainSelection(delta int) {
 		}
 		m.portIndex = next
 	}
+}
+
+func (m *Model) moveMatchSelection(forward bool) {
+	matches := m.currentMatchIndices()
+	if len(matches) == 0 {
+		return
+	}
+	current := m.currentIndex()
+	pos := -1
+	for i, idx := range matches {
+		if idx == current {
+			pos = i
+			break
+		}
+	}
+	if pos == -1 {
+		m.setCurrentIndex(matches[0])
+		return
+	}
+	if forward {
+		pos++
+		if pos >= len(matches) {
+			pos = 0
+		}
+	} else {
+		pos--
+		if pos < 0 {
+			pos = len(matches) - 1
+		}
+	}
+	m.setCurrentIndex(matches[pos])
 }
 
 func (m *Model) startAddInput() tea.Cmd {
@@ -327,6 +397,71 @@ func (m *Model) currentData() *firewalld.Zone {
 		return m.permanentData
 	}
 	return m.runtimeData
+}
+
+func (m *Model) currentIndex() int {
+	if m.tab == tabPorts {
+		return m.portIndex
+	}
+	return m.serviceIndex
+}
+
+func (m *Model) setCurrentIndex(index int) {
+	if m.tab == tabPorts {
+		m.portIndex = index
+		return
+	}
+	m.serviceIndex = index
+}
+
+func (m *Model) currentItems() []string {
+	current := m.currentData()
+	if current == nil {
+		return nil
+	}
+	if m.tab == tabPorts {
+		items := make([]string, 0, len(current.Ports))
+		for _, p := range current.Ports {
+			items = append(items, p.Port+"/"+p.Protocol)
+		}
+		return items
+	}
+	return current.Services
+}
+
+func (m *Model) currentMatchIndices() []int {
+	return matchIndices(m.currentItems(), m.searchQuery)
+}
+
+func (m *Model) applySearchSelection() {
+	if m.searchQuery == "" {
+		return
+	}
+	matches := m.currentMatchIndices()
+	if len(matches) == 0 {
+		return
+	}
+	current := m.currentIndex()
+	for _, idx := range matches {
+		if idx == current {
+			return
+		}
+	}
+	m.setCurrentIndex(matches[0])
+}
+
+func matchIndices(items []string, query string) []int {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return nil
+	}
+	indices := make([]int, 0, len(items))
+	for i, item := range items {
+		if strings.Contains(strings.ToLower(item), query) {
+			indices = append(indices, i)
+		}
+	}
+	return indices
 }
 
 func parsePortInput(value string) (firewalld.Port, error) {

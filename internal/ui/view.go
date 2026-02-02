@@ -20,6 +20,7 @@ var (
 	tabActiveStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229")).Background(lipgloss.Color("62")).Padding(0, 1)
 	tabInactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Background(lipgloss.Color("237")).Padding(0, 1)
 	inputStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("229"))
+	matchStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
 	statusStyle      = lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("250")).Padding(0, 1)
 	sidebarStyle     = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
 	mainStyle        = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
@@ -292,10 +293,10 @@ func renderServicesList(b *strings.Builder, m Model, current *firewalld.Zone) {
 
 	for i, s := range current.Services {
 		prefix := "  "
-		line := s
+		line := highlightMatch(s, m.searchQuery)
 		if !m.permanent && m.permanentData != nil {
 			if _, ok := permanentSet[s]; !ok {
-				line = s + " *"
+				line = line + " *"
 			}
 		}
 		if i == m.serviceIndex {
@@ -317,7 +318,8 @@ func renderPortsList(b *strings.Builder, m Model, current *firewalld.Zone) {
 	}
 
 	for i, p := range current.Ports {
-		line := fmt.Sprintf("%s/%s", p.Port, p.Protocol)
+		base := fmt.Sprintf("%s/%s", p.Port, p.Protocol)
+		line := highlightMatch(base, m.searchQuery)
 		prefix := "  "
 		if !m.permanent && m.permanentData != nil {
 			mark := portDiffMark(p, m.permanentData)
@@ -342,7 +344,6 @@ func portDiffMark(p firewalld.Port, permanent *firewalld.Zone) string {
 		return ""
 	}
 
-	exactKey := p.Port + "/" + p.Protocol
 	portExists := false
 	for _, pp := range permanent.Ports {
 		if pp.Port == p.Port && pp.Protocol == p.Protocol {
@@ -355,7 +356,6 @@ func portDiffMark(p firewalld.Port, permanent *firewalld.Zone) string {
 	if portExists {
 		return "~"
 	}
-	_ = exactKey
 	return "*"
 }
 func renderInput(m Model) string {
@@ -369,6 +369,8 @@ func renderInput(m Model) string {
 		label = "Add service (" + mode + "): "
 	case inputAddPort:
 		label = "Add port (" + mode + "): "
+	case inputSearch:
+		label = "Search: "
 	}
 	return inputStyle.Render(label) + m.input.View()
 }
@@ -384,9 +386,31 @@ func renderStatus(m Model) string {
 	} else if !m.permanent {
 		legend = "Legend: * runtime-only  ~ differs"
 	}
-	status := fmt.Sprintf("Mode: %s | 1/2: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit", mode)
+	searchHint := "  /: search"
+	if m.searchQuery != "" {
+		searchHint = "  /: search  n/N: next"
+	}
+	status := fmt.Sprintf("Mode: %s | 1/2: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, searchHint)
 	if legend != "" {
 		status = status + "\n" + legend
 	}
 	return statusStyle.Render(status)
+}
+
+func highlightMatch(text, query string) string {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return text
+	}
+	lowerText := strings.ToLower(text)
+	lowerQuery := strings.ToLower(query)
+	idx := strings.Index(lowerText, lowerQuery)
+	if idx < 0 {
+		return text
+	}
+	end := idx + len(lowerQuery)
+	if end > len(text) {
+		return text
+	}
+	return text[:idx] + matchStyle.Render(text[idx:end]) + text[end:]
 }

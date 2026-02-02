@@ -30,6 +30,7 @@ const (
 	inputNone inputMode = iota
 	inputAddService
 	inputAddPort
+	inputSearch
 )
 
 type Model struct {
@@ -43,6 +44,7 @@ type Model struct {
 	serviceIndex int
 	portIndex    int
 	splitView    bool
+	searchQuery  string
 
 	runtimeData   *firewalld.Zone
 	permanentData *firewalld.Zone
