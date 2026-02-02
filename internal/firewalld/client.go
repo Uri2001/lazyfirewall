@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	dbusInterface = "org.fedoraproject.FirewallD1"
-	dbusPath      = "/org/fedoraproject/FirewallD1"
+	dbusInterface  = "org.fedoraproject.FirewallD1"
+	dbusPath       = "/org/fedoraproject/FirewallD1"
 	dbusConfigPath = "/org/fedoraproject/FirewallD1/config"
 )
 

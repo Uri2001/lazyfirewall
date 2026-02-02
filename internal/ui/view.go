@@ -11,13 +11,16 @@ import (
 )
 
 var (
-	titleStyle    = lipgloss.NewStyle().Bold(true)
-	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	statusStyle   = lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("250")).Padding(0, 1)
-	sidebarStyle  = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
-	mainStyle     = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
+	titleStyle       = lipgloss.NewStyle().Bold(true)
+	selectedStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+	dimStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	errorStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	tabActiveStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229")).Background(lipgloss.Color("62")).Padding(0, 1)
+	tabInactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Background(lipgloss.Color("237")).Padding(0, 1)
+	inputStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("229"))
+	statusStyle      = lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("250")).Padding(0, 1)
+	sidebarStyle     = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
+	mainStyle        = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
 )
 
 func (m Model) View() string {
@@ -105,28 +108,88 @@ func renderMain(m Model, width int) string {
 		return mainStyle.Width(width).Render(b.String())
 	}
 
-	b.WriteString(titleStyle.Render("Services"))
 	b.WriteString("\n")
-	if len(m.zoneData.Services) == 0 {
-		b.WriteString(dimStyle.Render("  (none)"))
-	} else {
-		for _, s := range m.zoneData.Services {
-			b.WriteString("  - " + s + "\n")
-		}
+	b.WriteString(renderTabs(m))
+	b.WriteString("\n\n")
+	switch m.tab {
+	case tabServices:
+		renderServicesList(&b, m)
+	case tabPorts:
+		renderPortsList(&b, m)
 	}
 
-	b.WriteString("\n")
-	b.WriteString(titleStyle.Render("Ports"))
-	b.WriteString("\n")
-	if len(m.zoneData.Ports) == 0 {
-		b.WriteString(dimStyle.Render("  (none)"))
-	} else {
-		for _, p := range m.zoneData.Ports {
-			b.WriteString(fmt.Sprintf("  - %s/%s\n", p.Port, p.Protocol))
-		}
+	if m.inputMode != inputNone {
+		b.WriteString("\n")
+		b.WriteString(renderInput(m))
 	}
 
 	return mainStyle.Width(width).Render(b.String())
+}
+
+func renderTabs(m Model) string {
+	serviceLabel := " Services "
+	portLabel := " Ports "
+	if m.tab == tabServices {
+		serviceLabel = tabActiveStyle.Render(serviceLabel)
+		portLabel = tabInactiveStyle.Render(portLabel)
+	} else {
+		serviceLabel = tabInactiveStyle.Render(serviceLabel)
+		portLabel = tabActiveStyle.Render(portLabel)
+	}
+	return serviceLabel + " " + portLabel
+}
+
+func renderServicesList(b *strings.Builder, m Model) {
+	if len(m.zoneData.Services) == 0 {
+		b.WriteString(dimStyle.Render("  (none)"))
+		return
+	}
+
+	for i, s := range m.zoneData.Services {
+		prefix := "  "
+		line := s
+		if i == m.serviceIndex {
+			prefix = "› "
+			if m.focus == focusMain {
+				line = selectedStyle.Render(s)
+			} else {
+				line = titleStyle.Render(s)
+			}
+		}
+		b.WriteString(prefix + line + "\n")
+	}
+}
+
+func renderPortsList(b *strings.Builder, m Model) {
+	if len(m.zoneData.Ports) == 0 {
+		b.WriteString(dimStyle.Render("  (none)"))
+		return
+	}
+
+	for i, p := range m.zoneData.Ports {
+		line := fmt.Sprintf("%s/%s", p.Port, p.Protocol)
+		prefix := "  "
+		if i == m.portIndex {
+			prefix = "› "
+			if m.focus == focusMain {
+				line = selectedStyle.Render(line)
+			} else {
+				line = titleStyle.Render(line)
+			}
+		}
+		b.WriteString(prefix + line + "\n")
+	}
+}
+
+func renderInput(m Model) string {
+	label := ""
+	switch m.inputMode {
+	case inputAddService:
+		label = "Add service: "
+	case inputAddPort:
+		label = "Add port: "
+	}
+	return inputStyle.Render(label) + m.input.View()
 }
 
 func renderStatus(m Model) string {
@@ -134,6 +197,6 @@ func renderStatus(m Model) string {
 	if m.permanent {
 		mode = "Permanent"
 	}
-	status := fmt.Sprintf("Mode: %s | P: toggle  Tab: focus  j/k: move  r: refresh  q: quit", mode)
+	status := fmt.Sprintf("Mode: %s | 1/2: tabs  a: add  d: delete  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit", mode)
 	return statusStyle.Render(status)
 }

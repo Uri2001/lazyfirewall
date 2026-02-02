@@ -7,6 +7,7 @@ import (
 	"lazyfirewall/internal/firewalld"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 )
 
 type focusArea int
@@ -16,6 +17,21 @@ const (
 	focusMain
 )
 
+type mainTab int
+
+const (
+	tabServices mainTab = iota
+	tabPorts
+)
+
+type inputMode int
+
+const (
+	inputNone inputMode = iota
+	inputAddService
+	inputAddPort
+)
+
 type Model struct {
 	client    *firewalld.Client
 	zones     []string
@@ -23,25 +39,39 @@ type Model struct {
 	focus     focusArea
 	permanent bool
 
-	zoneData *firewalld.Zone
-	loading  bool
-	pendingZone string
-	err      error
+	tab          mainTab
+	serviceIndex int
+	portIndex    int
 
-	width   int
-	height  int
-	spinner spinner.Model
+	zoneData    *firewalld.Zone
+	loading     bool
+	pendingZone string
+	err         error
+
+	width     int
+	height    int
+	spinner   spinner.Model
+	input     textinput.Model
+	inputMode inputMode
 }
 
 func NewModel(client *firewalld.Client) Model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Line
 
+	ti := textinput.New()
+	ti.CharLimit = 64
+	ti.Width = 32
+	ti.Prompt = ""
+
 	return Model{
-		client:   client,
-		focus:    focusZones,
-		loading:  true,
-		spinner:  sp,
+		client:    client,
+		focus:     focusZones,
+		tab:       tabServices,
+		loading:   true,
+		spinner:   sp,
+		input:     ti,
+		inputMode: inputNone,
 		permanent: false,
 	}
 }
