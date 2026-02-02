@@ -55,7 +55,8 @@ func (c *Client) getZoneSettingsPermanent(zone string) (*Zone, error) {
 func (c *Client) getConfigZoneObject(zone string) (dbus.BusObject, error) {
 	var path dbus.ObjectPath
 	method := dbusInterface + ".config.getZoneByName"
-	if err := c.call(method, &path, zone); err != nil {
+	configObj := c.conn.Object(dbusInterface, dbusConfigPath)
+	if err := c.callObject(configObj, method, &path, zone); err != nil {
 		return nil, err
 	}
 
