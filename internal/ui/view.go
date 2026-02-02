@@ -114,11 +114,15 @@ func renderMain(m Model, width int) string {
 	b.WriteString("\n")
 	b.WriteString(renderTabs(m))
 	b.WriteString("\n\n")
-	switch m.tab {
-	case tabServices:
-		renderServicesList(&b, m, current)
-	case tabPorts:
-		renderPortsList(&b, m, current)
+	if m.splitView {
+		b.WriteString(renderSplitView(m, width))
+	} else {
+		switch m.tab {
+		case tabServices:
+			renderServicesList(&b, m, current)
+		case tabPorts:
+			renderPortsList(&b, m, current)
+		}
 	}
 
 	if m.inputMode != inputNone {
@@ -140,6 +144,137 @@ func renderTabs(m Model) string {
 		portLabel = tabActiveStyle.Render(portLabel)
 	}
 	return serviceLabel + " " + portLabel
+}
+
+func renderSplitView(m Model, width int) string {
+	leftWidth := width/2 - 1
+	if leftWidth < 20 {
+		leftWidth = 20
+	}
+	rightWidth := width - leftWidth - 1
+	if rightWidth < 20 {
+		rightWidth = 20
+	}
+
+	leftLines, rightLines := splitLines(m)
+	left := titleStyle.Render("Runtime") + "\n" + strings.Join(leftLines, "\n")
+	right := titleStyle.Render("Permanent") + "\n" + strings.Join(rightLines, "\n")
+
+	leftBox := lipgloss.NewStyle().Width(leftWidth).Render(left)
+	rightBox := lipgloss.NewStyle().Width(rightWidth).Render(right)
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
+}
+
+func splitLines(m Model) ([]string, []string) {
+	switch m.tab {
+	case tabServices:
+		return diffServices(m.runtimeData, m.permanentData)
+	case tabPorts:
+		return diffPorts(m.runtimeData, m.permanentData)
+	default:
+		return []string{""}, []string{""}
+	}
+}
+
+func diffServices(runtime, permanent *firewalld.Zone) ([]string, []string) {
+	if runtime == nil || permanent == nil {
+		return []string{dimStyle.Render("(loading)")}, []string{dimStyle.Render("(loading)")}
+	}
+
+	permanentSet := make(map[string]struct{}, len(permanent.Services))
+	for _, s := range permanent.Services {
+		permanentSet[s] = struct{}{}
+	}
+	runtimeSet := make(map[string]struct{}, len(runtime.Services))
+	for _, s := range runtime.Services {
+		runtimeSet[s] = struct{}{}
+	}
+
+	left := make([]string, 0, len(runtime.Services))
+	for _, s := range runtime.Services {
+		prefix := "  "
+		if _, ok := permanentSet[s]; !ok {
+			prefix = "+ "
+		}
+		left = append(left, prefix+s)
+	}
+
+	right := make([]string, 0, len(permanent.Services))
+	for _, s := range permanent.Services {
+		prefix := "  "
+		if _, ok := runtimeSet[s]; !ok {
+			prefix = "- "
+		}
+		right = append(right, prefix+s)
+	}
+
+	if len(left) == 0 {
+		left = []string{dimStyle.Render("(none)")}
+	}
+	if len(right) == 0 {
+		right = []string{dimStyle.Render("(none)")}
+	}
+
+	return left, right
+}
+
+func diffPorts(runtime, permanent *firewalld.Zone) ([]string, []string) {
+	if runtime == nil || permanent == nil {
+		return []string{dimStyle.Render("(loading)")}, []string{dimStyle.Render("(loading)")}
+	}
+
+	permanentExact := make(map[string]struct{}, len(permanent.Ports))
+	permanentByPort := make(map[string]struct{}, len(permanent.Ports))
+	for _, p := range permanent.Ports {
+		key := p.Port + "/" + p.Protocol
+		permanentExact[key] = struct{}{}
+		permanentByPort[p.Port] = struct{}{}
+	}
+
+	runtimeExact := make(map[string]struct{}, len(runtime.Ports))
+	runtimeByPort := make(map[string]struct{}, len(runtime.Ports))
+	for _, p := range runtime.Ports {
+		key := p.Port + "/" + p.Protocol
+		runtimeExact[key] = struct{}{}
+		runtimeByPort[p.Port] = struct{}{}
+	}
+
+	left := make([]string, 0, len(runtime.Ports))
+	for _, p := range runtime.Ports {
+		key := p.Port + "/" + p.Protocol
+		prefix := "  "
+		if _, ok := permanentExact[key]; ok {
+			prefix = "  "
+		} else if _, ok := permanentByPort[p.Port]; ok {
+			prefix = "~ "
+		} else {
+			prefix = "+ "
+		}
+		left = append(left, prefix+key)
+	}
+
+	right := make([]string, 0, len(permanent.Ports))
+	for _, p := range permanent.Ports {
+		key := p.Port + "/" + p.Protocol
+		prefix := "  "
+		if _, ok := runtimeExact[key]; ok {
+			prefix = "  "
+		} else if _, ok := runtimeByPort[p.Port]; ok {
+			prefix = "~ "
+		} else {
+			prefix = "- "
+		}
+		right = append(right, prefix+key)
+	}
+
+	if len(left) == 0 {
+		left = []string{dimStyle.Render("(none)")}
+	}
+	if len(right) == 0 {
+		right = []string{dimStyle.Render("(none)")}
+	}
+
+	return left, right
 }
 
 func renderServicesList(b *strings.Builder, m Model, current *firewalld.Zone) {
@@ -244,9 +379,11 @@ func renderStatus(m Model) string {
 		mode = "Permanent"
 	}
 	legend := ""
-	if !m.permanent {
+	if m.splitView {
+		legend = " | + added  - removed  ~ modified"
+	} else if !m.permanent {
 		legend = " | * runtime-only  ~ differs"
 	}
-	status := fmt.Sprintf("Mode: %s | 1/2: tabs  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, legend)
+	status := fmt.Sprintf("Mode: %s | 1/2: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, legend)
 	return statusStyle.Render(status)
 }

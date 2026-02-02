@@ -42,6 +42,7 @@ type Model struct {
 	tab          mainTab
 	serviceIndex int
 	portIndex    int
+	splitView    bool
 
 	runtimeData   *firewalld.Zone
 	permanentData *firewalld.Zone

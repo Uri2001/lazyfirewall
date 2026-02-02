@@ -61,6 +61,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "2", "l", "right":
 			m.tab = tabPorts
 			return m, nil
+		case "S":
+			m.splitView = !m.splitView
+			return m, nil
 		case "r":
 			m.loading = true
 			m.err = nil
