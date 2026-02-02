@@ -130,6 +130,8 @@ func variantToPorts(v dbus.Variant) ([]Port, error) {
 		return parsePortStrings(val)
 	case []interface{}:
 		return parsePortInterfaces(val)
+	case [][]interface{}:
+		return parsePortInterfaceTuples(val)
 	default:
 		return nil, fmt.Errorf("unexpected port format: %T", val)
 	}
@@ -187,6 +189,22 @@ func parsePortInterfaces(items []interface{}) ([]Port, error) {
 		default:
 			return nil, fmt.Errorf("unexpected port tuple type: %T", val)
 		}
+	}
+	return ports, nil
+}
+
+func parsePortInterfaceTuples(items [][]interface{}) ([]Port, error) {
+	ports := make([]Port, 0, len(items))
+	for _, item := range items {
+		if len(item) != 2 {
+			return nil, fmt.Errorf("invalid port tuple: %v", item)
+		}
+		p, ok1 := item[0].(string)
+		proto, ok2 := item[1].(string)
+		if !ok1 || !ok2 {
+			return nil, fmt.Errorf("invalid port tuple types: %T %T", item[0], item[1])
+		}
+		ports = append(ports, Port{Port: p, Protocol: proto})
 	}
 	return ports, nil
 }
