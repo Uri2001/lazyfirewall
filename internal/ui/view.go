@@ -181,20 +181,13 @@ func renderPortsList(b *strings.Builder, m Model, current *firewalld.Zone) {
 		return
 	}
 
-	permanentSet := make(map[string]struct{})
-	if !m.permanent && m.permanentData != nil {
-		for _, p := range m.permanentData.Ports {
-			key := p.Port + "/" + p.Protocol
-			permanentSet[key] = struct{}{}
-		}
-	}
-
 	for i, p := range current.Ports {
 		line := fmt.Sprintf("%s/%s", p.Port, p.Protocol)
 		prefix := "  "
 		if !m.permanent && m.permanentData != nil {
-			if _, ok := permanentSet[line]; !ok {
-				line = line + " *"
+			mark := portDiffMark(p, m.permanentData)
+			if mark != "" {
+				line = line + " " + mark
 			}
 		}
 		if i == m.portIndex {
@@ -209,6 +202,27 @@ func renderPortsList(b *strings.Builder, m Model, current *firewalld.Zone) {
 	}
 }
 
+func portDiffMark(p firewalld.Port, permanent *firewalld.Zone) string {
+	if permanent == nil {
+		return ""
+	}
+
+	exactKey := p.Port + "/" + p.Protocol
+	portExists := false
+	for _, pp := range permanent.Ports {
+		if pp.Port == p.Port && pp.Protocol == p.Protocol {
+			return ""
+		}
+		if pp.Port == p.Port {
+			portExists = true
+		}
+	}
+	if portExists {
+		return "~"
+	}
+	_ = exactKey
+	return "*"
+}
 func renderInput(m Model) string {
 	label := ""
 	mode := "runtime"
@@ -231,7 +245,7 @@ func renderStatus(m Model) string {
 	}
 	legend := ""
 	if !m.permanent {
-		legend = " | * runtime-only"
+		legend = " | * runtime-only  ~ differs"
 	}
 	status := fmt.Sprintf("Mode: %s | 1/2: tabs  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, legend)
 	return statusStyle.Render(status)
