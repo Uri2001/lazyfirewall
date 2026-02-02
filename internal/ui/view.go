@@ -380,10 +380,13 @@ func renderStatus(m Model) string {
 	}
 	legend := ""
 	if m.splitView {
-		legend = " | + added  - removed  ~ modified"
+		legend = "Legend: + added  - removed  ~ modified"
 	} else if !m.permanent {
-		legend = " | * runtime-only  ~ differs"
+		legend = "Legend: * runtime-only  ~ differs"
 	}
-	status := fmt.Sprintf("Mode: %s | 1/2: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, legend)
+	status := fmt.Sprintf("Mode: %s | 1/2: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit", mode)
+	if legend != "" {
+		status = status + "\n" + legend
+	}
 	return statusStyle.Render(status)
 }
