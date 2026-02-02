@@ -39,30 +39,50 @@ func fetchZoneSettingsCmd(client *firewalld.Client, zone string, permanent bool)
 	}
 }
 
-func addServiceCmd(client *firewalld.Client, zone, service string) tea.Cmd {
+func addServiceCmd(client *firewalld.Client, zone, service string, permanent bool) tea.Cmd {
 	return func() tea.Msg {
-		err := client.AddServicePermanent(zone, service)
+		var err error
+		if permanent {
+			err = client.AddServicePermanent(zone, service)
+		} else {
+			err = client.AddServiceRuntime(zone, service)
+		}
 		return mutationMsg{zone: zone, err: err}
 	}
 }
 
-func removeServiceCmd(client *firewalld.Client, zone, service string) tea.Cmd {
+func removeServiceCmd(client *firewalld.Client, zone, service string, permanent bool) tea.Cmd {
 	return func() tea.Msg {
-		err := client.RemoveServicePermanent(zone, service)
+		var err error
+		if permanent {
+			err = client.RemoveServicePermanent(zone, service)
+		} else {
+			err = client.RemoveServiceRuntime(zone, service)
+		}
 		return mutationMsg{zone: zone, err: err}
 	}
 }
 
-func addPortCmd(client *firewalld.Client, zone string, port firewalld.Port) tea.Cmd {
+func addPortCmd(client *firewalld.Client, zone string, port firewalld.Port, permanent bool) tea.Cmd {
 	return func() tea.Msg {
-		err := client.AddPortPermanent(zone, port)
+		var err error
+		if permanent {
+			err = client.AddPortPermanent(zone, port)
+		} else {
+			err = client.AddPortRuntime(zone, port)
+		}
 		return mutationMsg{zone: zone, err: err}
 	}
 }
 
-func removePortCmd(client *firewalld.Client, zone string, port firewalld.Port) tea.Cmd {
+func removePortCmd(client *firewalld.Client, zone string, port firewalld.Port, permanent bool) tea.Cmd {
 	return func() tea.Msg {
-		err := client.RemovePortPermanent(zone, port)
+		var err error
+		if permanent {
+			err = client.RemovePortPermanent(zone, port)
+		} else {
+			err = client.RemovePortRuntime(zone, port)
+		}
 		return mutationMsg{zone: zone, err: err}
 	}
 }

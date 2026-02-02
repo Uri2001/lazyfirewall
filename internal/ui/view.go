@@ -183,11 +183,15 @@ func renderPortsList(b *strings.Builder, m Model) {
 
 func renderInput(m Model) string {
 	label := ""
+	mode := "runtime"
+	if m.permanent {
+		mode = "permanent"
+	}
 	switch m.inputMode {
 	case inputAddService:
-		label = "Add service: "
+		label = "Add service (" + mode + "): "
 	case inputAddPort:
-		label = "Add port: "
+		label = "Add port (" + mode + "): "
 	}
 	return inputStyle.Render(label) + m.input.View()
 }

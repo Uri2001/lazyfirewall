@@ -20,6 +20,16 @@ func (c *Client) AddServicePermanent(zone, service string) error {
 	return c.callObject(obj, method, nil, service)
 }
 
+func (c *Client) AddServiceRuntime(zone, service string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+
+	slog.Info("adding service (runtime)", "zone", zone, "service", service)
+	method := dbusInterface + ".zone.addService"
+	return c.call(method, nil, zone, service)
+}
+
 func (c *Client) RemoveServicePermanent(zone, service string) error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
@@ -33,6 +43,16 @@ func (c *Client) RemoveServicePermanent(zone, service string) error {
 
 	method := dbusInterface + ".config.zone.removeService"
 	return c.callObject(obj, method, nil, service)
+}
+
+func (c *Client) RemoveServiceRuntime(zone, service string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+
+	slog.Info("removing service (runtime)", "zone", zone, "service", service)
+	method := dbusInterface + ".zone.removeService"
+	return c.call(method, nil, zone, service)
 }
 
 func (c *Client) AddPortPermanent(zone string, port Port) error {
@@ -50,6 +70,16 @@ func (c *Client) AddPortPermanent(zone string, port Port) error {
 	return c.callObject(obj, method, nil, port.Port, port.Protocol)
 }
 
+func (c *Client) AddPortRuntime(zone string, port Port) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+
+	slog.Info("adding port (runtime)", "zone", zone, "port", port.Port, "protocol", port.Protocol)
+	method := dbusInterface + ".zone.addPort"
+	return c.call(method, nil, zone, port.Port, port.Protocol)
+}
+
 func (c *Client) RemovePortPermanent(zone string, port Port) error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
@@ -63,4 +93,14 @@ func (c *Client) RemovePortPermanent(zone string, port Port) error {
 
 	method := dbusInterface + ".config.zone.removePort"
 	return c.callObject(obj, method, nil, port.Port, port.Protocol)
+}
+
+func (c *Client) RemovePortRuntime(zone string, port Port) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+
+	slog.Info("removing port (runtime)", "zone", zone, "port", port.Port, "protocol", port.Protocol)
+	method := dbusInterface + ".zone.removePort"
+	return c.call(method, nil, zone, port.Port, port.Protocol)
 }

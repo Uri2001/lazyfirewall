@@ -205,10 +205,6 @@ func (m *Model) moveMainSelection(delta int) {
 }
 
 func (m *Model) startAddInput() tea.Cmd {
-	if !m.permanent {
-		m.err = fmt.Errorf("switch to Permanent mode (P) to edit")
-		return nil
-	}
 	m.err = nil
 	m.input.SetValue("")
 	switch m.tab {
@@ -244,7 +240,7 @@ func (m *Model) submitInput() tea.Cmd {
 	case tabServices:
 		m.inputMode = inputNone
 		m.input.Blur()
-		return addServiceCmd(m.client, zone, value)
+		return addServiceCmd(m.client, zone, value, m.permanent)
 	case tabPorts:
 		port, err := parsePortInput(value)
 		if err != nil {
@@ -253,17 +249,13 @@ func (m *Model) submitInput() tea.Cmd {
 		}
 		m.inputMode = inputNone
 		m.input.Blur()
-		return addPortCmd(m.client, zone, port)
+		return addPortCmd(m.client, zone, port, m.permanent)
 	default:
 		return nil
 	}
 }
 
 func (m *Model) removeSelected() tea.Cmd {
-	if !m.permanent {
-		m.err = fmt.Errorf("switch to Permanent mode (P) to edit")
-		return nil
-	}
 	if m.zoneData == nil || len(m.zones) == 0 {
 		return nil
 	}
@@ -275,13 +267,13 @@ func (m *Model) removeSelected() tea.Cmd {
 			return nil
 		}
 		service := m.zoneData.Services[m.serviceIndex]
-		return removeServiceCmd(m.client, zone, service)
+		return removeServiceCmd(m.client, zone, service, m.permanent)
 	case tabPorts:
 		if len(m.zoneData.Ports) == 0 {
 			return nil
 		}
 		port := m.zoneData.Ports[m.portIndex]
-		return removePortCmd(m.client, zone, port)
+		return removePortCmd(m.client, zone, port, m.permanent)
 	default:
 		return nil
 	}
