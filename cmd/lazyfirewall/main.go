@@ -9,6 +9,7 @@ import (
 
 	"lazyfirewall/internal/firewalld"
 	"lazyfirewall/internal/logger"
+	"lazyfirewall/internal/ui"
 )
 
 func main() {
@@ -23,16 +24,8 @@ func main() {
 	}
 	defer client.Close()
 
-	fmt.Printf("Connected to firewalld %s (%s)\n\n", client.Version(), client.APIVersion())
-
-	zones, err := client.ListZones()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to list zones: %v\n", err)
+	if err := ui.Run(client); err != nil {
+		fmt.Fprintf(os.Stderr, "UI error: %v\n", err)
 		os.Exit(1)
-	}
-
-	fmt.Println("Available zones:")
-	for _, zone := range zones {
-		fmt.Printf("  • %s\n", zone)
 	}
 }

@@ -88,6 +88,27 @@ func (c *Client) call(method string, out any, args ...any) error {
 	return nil
 }
 
+func (c *Client) callObject(obj dbus.BusObject, method string, out any, args ...any) error {
+	slog.Debug("dbus call", "method", method, "args", args)
+
+	call := obj.Call(method, 0, args...)
+	if call.Err != nil {
+		slog.Error("dbus call failed", "method", method, "error", call.Err)
+		return fmt.Errorf("dbus %s: %w", method, call.Err)
+	}
+
+	if out == nil {
+		return nil
+	}
+
+	if err := call.Store(out); err != nil {
+		slog.Error("dbus store failed", "method", method, "error", err)
+		return fmt.Errorf("dbus store %s: %w", method, err)
+	}
+
+	return nil
+}
+
 func (c *Client) ListZones() ([]string, error) {
 	var zones []string
 
