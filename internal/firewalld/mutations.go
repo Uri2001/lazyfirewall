@@ -27,7 +27,7 @@ func (c *Client) AddServiceRuntime(zone, service string) error {
 
 	slog.Info("adding service (runtime)", "zone", zone, "service", service)
 	method := dbusInterface + ".zone.addService"
-	return c.call(method, nil, zone, service)
+	return c.call(method, nil, zone, service, uint32(0))
 }
 
 func (c *Client) RemoveServicePermanent(zone, service string) error {
@@ -77,7 +77,7 @@ func (c *Client) AddPortRuntime(zone string, port Port) error {
 
 	slog.Info("adding port (runtime)", "zone", zone, "port", port.Port, "protocol", port.Protocol)
 	method := dbusInterface + ".zone.addPort"
-	return c.call(method, nil, zone, port.Port, port.Protocol)
+	return c.call(method, nil, zone, port.Port, port.Protocol, uint32(0))
 }
 
 func (c *Client) RemovePortPermanent(zone string, port Port) error {
