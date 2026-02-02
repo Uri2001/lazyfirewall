@@ -15,9 +15,10 @@ type zonesMsg struct {
 }
 
 type zoneSettingsMsg struct {
-	zone     *firewalld.Zone
-	zoneName string
-	err      error
+	zone      *firewalld.Zone
+	zoneName  string
+	permanent bool
+	err       error
 }
 
 type mutationMsg struct {
@@ -35,7 +36,7 @@ func fetchZonesCmd(client *firewalld.Client) tea.Cmd {
 func fetchZoneSettingsCmd(client *firewalld.Client, zone string, permanent bool) tea.Cmd {
 	return func() tea.Msg {
 		settings, err := client.GetZoneSettings(zone, permanent)
-		return zoneSettingsMsg{zone: settings, zoneName: zone, err: err}
+		return zoneSettingsMsg{zone: settings, zoneName: zone, permanent: permanent, err: err}
 	}
 }
 

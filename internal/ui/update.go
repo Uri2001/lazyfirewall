@@ -87,7 +87,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.loading = true
 				m.err = nil
 				m.pendingZone = m.zones[m.selected]
-				return m, fetchZoneSettingsCmd(m.client, m.zones[m.selected], m.permanent)
+				return m, tea.Batch(
+					fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
+					fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
+				)
 			}
 			return m, nil
 		case "j", "down":
@@ -97,7 +100,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.loading = true
 					m.err = nil
 					m.pendingZone = m.zones[m.selected]
-					return m, fetchZoneSettingsCmd(m.client, m.zones[m.selected], m.permanent)
+					return m, tea.Batch(
+						fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
+						fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
+					)
 				}
 				return m, nil
 			}
@@ -110,7 +116,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.loading = true
 					m.err = nil
 					m.pendingZone = m.zones[m.selected]
-					return m, fetchZoneSettingsCmd(m.client, m.zones[m.selected], m.permanent)
+					return m, tea.Batch(
+						fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
+						fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
+					)
 				}
 				return m, nil
 			}
@@ -144,18 +153,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.loading = true
 		m.pendingZone = m.zones[m.selected]
-		return m, fetchZoneSettingsCmd(m.client, m.zones[m.selected], m.permanent)
+		return m, tea.Batch(
+			fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
+			fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
+		)
 	case zoneSettingsMsg:
 		if msg.zoneName != "" && msg.zoneName != m.pendingZone {
 			return m, nil
 		}
-		m.loading = false
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
 		}
 		m.err = nil
-		m.zoneData = msg.zone
+		if msg.permanent {
+			m.permanentData = msg.zone
+		} else {
+			m.runtimeData = msg.zone
+		}
+		if msg.permanent == m.permanent {
+			m.loading = false
+		}
 		m.clampSelections()
 		return m, nil
 	case mutationMsg:
@@ -166,7 +184,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.err = nil
 		m.pendingZone = msg.zone
-		return m, fetchZoneSettingsCmd(m.client, msg.zone, m.permanent)
+		return m, tea.Batch(
+			fetchZoneSettingsCmd(m.client, msg.zone, false),
+			fetchZoneSettingsCmd(m.client, msg.zone, true),
+		)
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -177,44 +198,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) clampSelections() {
-	if m.zoneData == nil {
+	current := m.currentData()
+	if current == nil {
 		return
 	}
-	if m.serviceIndex >= len(m.zoneData.Services) {
+	if m.serviceIndex >= len(current.Services) {
 		m.serviceIndex = 0
 	}
-	if m.portIndex >= len(m.zoneData.Ports) {
+	if m.portIndex >= len(current.Ports) {
 		m.portIndex = 0
 	}
 }
 
 func (m *Model) moveMainSelection(delta int) {
-	if m.zoneData == nil {
+	current := m.currentData()
+	if current == nil {
 		return
 	}
 	switch m.tab {
 	case tabServices:
-		if len(m.zoneData.Services) == 0 {
+		if len(current.Services) == 0 {
 			return
 		}
 		next := m.serviceIndex + delta
 		if next < 0 {
 			next = 0
 		}
-		if next >= len(m.zoneData.Services) {
-			next = len(m.zoneData.Services) - 1
+		if next >= len(current.Services) {
+			next = len(current.Services) - 1
 		}
 		m.serviceIndex = next
 	case tabPorts:
-		if len(m.zoneData.Ports) == 0 {
+		if len(current.Ports) == 0 {
 			return
 		}
 		next := m.portIndex + delta
 		if next < 0 {
 			next = 0
 		}
-		if next >= len(m.zoneData.Ports) {
-			next = len(m.zoneData.Ports) - 1
+		if next >= len(current.Ports) {
+			next = len(current.Ports) - 1
 		}
 		m.portIndex = next
 	}
@@ -240,7 +263,7 @@ func (m *Model) submitInput() tea.Cmd {
 	if m.inputMode == inputNone {
 		return nil
 	}
-	if m.zoneData == nil || len(m.zones) == 0 {
+	if m.currentData() == nil || len(m.zones) == 0 {
 		m.err = fmt.Errorf("no zone selected")
 		return nil
 	}
@@ -272,27 +295,35 @@ func (m *Model) submitInput() tea.Cmd {
 }
 
 func (m *Model) removeSelected() tea.Cmd {
-	if m.zoneData == nil || len(m.zones) == 0 {
+	current := m.currentData()
+	if current == nil || len(m.zones) == 0 {
 		return nil
 	}
 	zone := m.zones[m.selected]
 
 	switch m.tab {
 	case tabServices:
-		if len(m.zoneData.Services) == 0 {
+		if len(current.Services) == 0 {
 			return nil
 		}
-		service := m.zoneData.Services[m.serviceIndex]
+		service := current.Services[m.serviceIndex]
 		return removeServiceCmd(m.client, zone, service, m.permanent)
 	case tabPorts:
-		if len(m.zoneData.Ports) == 0 {
+		if len(current.Ports) == 0 {
 			return nil
 		}
-		port := m.zoneData.Ports[m.portIndex]
+		port := current.Ports[m.portIndex]
 		return removePortCmd(m.client, zone, port, m.permanent)
 	default:
 		return nil
 	}
+}
+
+func (m *Model) currentData() *firewalld.Zone {
+	if m.permanent {
+		return m.permanentData
+	}
+	return m.runtimeData
 }
 
 func parsePortInput(value string) (firewalld.Port, error) {

@@ -43,10 +43,11 @@ type Model struct {
 	serviceIndex int
 	portIndex    int
 
-	zoneData    *firewalld.Zone
-	loading     bool
-	pendingZone string
-	err         error
+	runtimeData   *firewalld.Zone
+	permanentData *firewalld.Zone
+	loading       bool
+	pendingZone   string
+	err           error
 
 	width     int
 	height    int

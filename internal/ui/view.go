@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"lazyfirewall/internal/firewalld"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -103,7 +105,8 @@ func renderMain(m Model, width int) string {
 		b.WriteString("\n\n")
 	}
 
-	if m.zoneData == nil {
+	current := m.currentData()
+	if current == nil {
 		b.WriteString(dimStyle.Render("No data loaded"))
 		return mainStyle.Width(width).Render(b.String())
 	}
@@ -113,9 +116,9 @@ func renderMain(m Model, width int) string {
 	b.WriteString("\n\n")
 	switch m.tab {
 	case tabServices:
-		renderServicesList(&b, m)
+		renderServicesList(&b, m, current)
 	case tabPorts:
-		renderPortsList(&b, m)
+		renderPortsList(&b, m, current)
 	}
 
 	if m.inputMode != inputNone {
@@ -139,36 +142,61 @@ func renderTabs(m Model) string {
 	return serviceLabel + " " + portLabel
 }
 
-func renderServicesList(b *strings.Builder, m Model) {
-	if len(m.zoneData.Services) == 0 {
+func renderServicesList(b *strings.Builder, m Model, current *firewalld.Zone) {
+	if len(current.Services) == 0 {
 		b.WriteString(dimStyle.Render("  (none)"))
 		return
 	}
 
-	for i, s := range m.zoneData.Services {
+	permanentSet := make(map[string]struct{})
+	if !m.permanent && m.permanentData != nil {
+		for _, s := range m.permanentData.Services {
+			permanentSet[s] = struct{}{}
+		}
+	}
+
+	for i, s := range current.Services {
 		prefix := "  "
 		line := s
+		if !m.permanent && m.permanentData != nil {
+			if _, ok := permanentSet[s]; !ok {
+				line = s + " *"
+			}
+		}
 		if i == m.serviceIndex {
 			prefix = "› "
 			if m.focus == focusMain {
-				line = selectedStyle.Render(s)
+				line = selectedStyle.Render(line)
 			} else {
-				line = titleStyle.Render(s)
+				line = titleStyle.Render(line)
 			}
 		}
 		b.WriteString(prefix + line + "\n")
 	}
 }
 
-func renderPortsList(b *strings.Builder, m Model) {
-	if len(m.zoneData.Ports) == 0 {
+func renderPortsList(b *strings.Builder, m Model, current *firewalld.Zone) {
+	if len(current.Ports) == 0 {
 		b.WriteString(dimStyle.Render("  (none)"))
 		return
 	}
 
-	for i, p := range m.zoneData.Ports {
+	permanentSet := make(map[string]struct{})
+	if !m.permanent && m.permanentData != nil {
+		for _, p := range m.permanentData.Ports {
+			key := p.Port + "/" + p.Protocol
+			permanentSet[key] = struct{}{}
+		}
+	}
+
+	for i, p := range current.Ports {
 		line := fmt.Sprintf("%s/%s", p.Port, p.Protocol)
 		prefix := "  "
+		if !m.permanent && m.permanentData != nil {
+			if _, ok := permanentSet[line]; !ok {
+				line = line + " *"
+			}
+		}
 		if i == m.portIndex {
 			prefix = "› "
 			if m.focus == focusMain {
@@ -201,6 +229,10 @@ func renderStatus(m Model) string {
 	if m.permanent {
 		mode = "Permanent"
 	}
-	status := fmt.Sprintf("Mode: %s | 1/2: tabs  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit", mode)
+	legend := ""
+	if !m.permanent {
+		legend = " | * runtime-only"
+	}
+	status := fmt.Sprintf("Mode: %s | 1/2: tabs  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, legend)
 	return statusStyle.Render(status)
 }
