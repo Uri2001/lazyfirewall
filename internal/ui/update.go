@@ -31,6 +31,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focus = focusZones
 			}
 			return m, nil
+		case "P":
+			m.permanent = !m.permanent
+			if len(m.zones) > 0 && m.selected < len(m.zones) {
+				m.loading = true
+				m.err = nil
+				m.pendingZone = m.zones[m.selected]
+				return m, fetchZoneSettingsCmd(m.client, m.zones[m.selected], m.permanent)
+			}
+			return m, nil
 		case "r":
 			m.loading = true
 			m.err = nil

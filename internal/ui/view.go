@@ -134,6 +134,6 @@ func renderStatus(m Model) string {
 	if m.permanent {
 		mode = "Permanent"
 	}
-	status := fmt.Sprintf("Mode: %s | Tab: focus  j/k: move  r: refresh  q: quit", mode)
+	status := fmt.Sprintf("Mode: %s | P: toggle  Tab: focus  j/k: move  r: refresh  q: quit", mode)
 	return statusStyle.Render(status)
 }
