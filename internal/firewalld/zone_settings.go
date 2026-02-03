@@ -63,6 +63,9 @@ func (c *Client) getConfigZoneObject(zone string) (dbus.BusObject, error) {
 	method := dbusInterface + ".config.getZoneByName"
 	configObj := c.conn.Object(dbusInterface, dbusConfigPath)
 	if err := c.callObject(configObj, method, &path, zone); err != nil {
+		if isPermissionDenied(err) {
+			return nil, ErrPermissionDenied
+		}
 		return nil, err
 	}
 
