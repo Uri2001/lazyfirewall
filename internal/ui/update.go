@@ -4,6 +4,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -189,6 +190,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.loading = true
 			m.err = nil
+			m.runtimeDenied = false
+			m.permanentDenied = false
+			m.runtimeData = nil
+			m.permanentData = nil
 			return m, fetchZonesCmd(m.client)
 		case "c":
 			if m.readOnly {
@@ -239,6 +244,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.details = nil
 					m.detailsErr = nil
 					m.detailsLoading = false
+					m.runtimeDenied = false
+					m.permanentDenied = false
+					m.runtimeData = nil
+					m.permanentData = nil
 					return m, tea.Batch(
 						fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
 						fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
@@ -261,6 +270,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.details = nil
 					m.detailsErr = nil
 					m.detailsLoading = false
+					m.runtimeDenied = false
+					m.permanentDenied = false
+					m.runtimeData = nil
+					m.permanentData = nil
 					return m, tea.Batch(
 						fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
 						fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
@@ -329,6 +342,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.details = nil
 		m.detailsErr = nil
 		m.detailsLoading = false
+		m.runtimeDenied = false
+		m.permanentDenied = false
+		m.runtimeData = nil
+		m.permanentData = nil
 		return m, tea.Batch(
 			fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
 			fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
@@ -338,14 +355,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.err != nil {
+			if errors.Is(msg.err, firewalld.ErrPermissionDenied) {
+				if msg.permanent {
+					m.permanentDenied = true
+					m.permanentData = nil
+				} else {
+					m.runtimeDenied = true
+					m.runtimeData = nil
+				}
+				if msg.permanent == m.permanent {
+					m.loading = false
+				}
+				return m, nil
+			}
 			m.err = msg.err
 			return m, nil
 		}
 		m.err = nil
 		if msg.permanent {
 			m.permanentData = msg.zone
+			m.permanentDenied = false
 		} else {
 			m.runtimeData = msg.zone
+			m.runtimeDenied = false
 		}
 		if msg.permanent == m.permanent {
 			m.loading = false
@@ -366,6 +398,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.details = nil
 		m.detailsErr = nil
 		m.detailsLoading = false
+		m.runtimeDenied = false
+		m.permanentDenied = false
+		m.runtimeData = nil
+		m.permanentData = nil
 		return m, tea.Batch(
 			fetchZoneSettingsCmd(m.client, msg.zone, false),
 			fetchZoneSettingsCmd(m.client, msg.zone, true),

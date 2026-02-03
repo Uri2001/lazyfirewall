@@ -29,6 +29,9 @@ func (c *Client) getZoneSettingsRuntime(zone string) (*Zone, error) {
 	var settings map[string]dbus.Variant
 	method := dbusInterface + ".zone.getZoneSettings2"
 	if err := c.call(method, &settings, zone); err != nil {
+		if isPermissionDenied(err) {
+			return nil, ErrPermissionDenied
+		}
 		return nil, err
 	}
 
@@ -46,6 +49,9 @@ func (c *Client) getZoneSettingsPermanent(zone string) (*Zone, error) {
 	var settings map[string]dbus.Variant
 	method := dbusInterface + ".config.zone.getSettings2"
 	if err := c.callObject(obj, method, &settings); err != nil {
+		if isPermissionDenied(err) {
+			return nil, ErrPermissionDenied
+		}
 		return nil, err
 	}
 

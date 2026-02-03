@@ -119,7 +119,13 @@ func renderMain(m Model, width int) string {
 
 	current := m.currentData()
 	if current == nil {
-		b.WriteString(dimStyle.Render("No data loaded"))
+		if m.permanent && m.permanentDenied {
+			b.WriteString(warnStyle.Render("No permission to read permanent config. Run with sudo."))
+		} else if !m.permanent && m.runtimeDenied {
+			b.WriteString(warnStyle.Render("No permission to read runtime settings. Run with sudo."))
+		} else {
+			b.WriteString(dimStyle.Render("No data loaded"))
+		}
 		return mainStyle.Width(width).Render(b.String())
 	}
 
