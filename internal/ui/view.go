@@ -688,16 +688,27 @@ func renderNetworkView(b *strings.Builder, m Model, current *firewalld.Zone) {
 	if current.Masquerade {
 		masq = "ON"
 	}
-	b.WriteString("Masquerade: " + masq + "\n\n")
+	b.WriteString("Masquerade: " + masq + " (m to toggle)\n\n")
 
 	b.WriteString("Interfaces:\n")
+	index := 0
 	if len(current.Interfaces) == 0 {
 		b.WriteString(dimStyle.Render("  (none)"))
 		b.WriteString("\n")
 	} else {
 		for _, i := range current.Interfaces {
 			line := highlightMatch(i, m.searchQuery)
-			b.WriteString("  - " + line + "\n")
+			prefix := "  "
+			if index == m.networkIndex {
+				prefix = "› "
+				if m.focus == focusMain {
+					line = selectedStyle.Render(line)
+				} else {
+					line = titleStyle.Render(line)
+				}
+			}
+			b.WriteString(prefix + line + "\n")
+			index++
 		}
 	}
 
@@ -708,9 +719,22 @@ func renderNetworkView(b *strings.Builder, m Model, current *firewalld.Zone) {
 	} else {
 		for _, s := range current.Sources {
 			line := highlightMatch(s, m.searchQuery)
-			b.WriteString("  - " + line + "\n")
+			prefix := "  "
+			if index == m.networkIndex {
+				prefix = "› "
+				if m.focus == focusMain {
+					line = selectedStyle.Render(line)
+				} else {
+					line = titleStyle.Render(line)
+				}
+			}
+			b.WriteString(prefix + line + "\n")
+			index++
 		}
 	}
+
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("i: add interface  s: add source  d: remove selected"))
 }
 
 func renderInfoView(b *strings.Builder, m Model, current *firewalld.Zone) {
@@ -837,6 +861,9 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  a           Add service/port\n")
 	b.WriteString("  d           Remove service/port\n")
 	b.WriteString("  e           Edit rich rule\n")
+	b.WriteString("  m           Toggle masquerade\n")
+	b.WriteString("  i           Add interface\n")
+	b.WriteString("  s           Add source\n")
 	b.WriteString("  c           Commit runtime → permanent\n")
 	b.WriteString("  u           Reload (revert runtime)\n")
 	b.WriteString("  t           Apply template\n")
@@ -914,6 +941,10 @@ func renderInput(m Model) string {
 		label = "Add rich rule (" + mode + "): "
 	case inputEditRich:
 		label = "Edit rich rule (" + mode + "): "
+	case inputAddInterface:
+		label = "Add interface (" + mode + "): "
+	case inputAddSource:
+		label = "Add source (" + mode + "): "
 	case inputSearch:
 		label = "Search: "
 	}

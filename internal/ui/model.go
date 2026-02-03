@@ -35,8 +35,15 @@ const (
 	inputAddPort
 	inputAddRich
 	inputEditRich
+	inputAddInterface
+	inputAddSource
 	inputSearch
 )
+
+type networkItem struct {
+	kind  string
+	value string
+}
 
 type Model struct {
 	client    *firewalld.Client
@@ -49,6 +56,7 @@ type Model struct {
 	serviceIndex    int
 	portIndex       int
 	richIndex       int
+	networkIndex    int
 	splitView       bool
 	searchQuery     string
 	templateMode    bool
@@ -98,4 +106,19 @@ func NewModel(client *firewalld.Client) Model {
 		permanent: false,
 		readOnly:  client.ReadOnly(),
 	}
+}
+
+func (m *Model) networkItems() []networkItem {
+	current := m.currentData()
+	if current == nil {
+		return nil
+	}
+	items := make([]networkItem, 0, len(current.Interfaces)+len(current.Sources))
+	for _, iface := range current.Interfaces {
+		items = append(items, networkItem{kind: "iface", value: iface})
+	}
+	for _, src := range current.Sources {
+		items = append(items, networkItem{kind: "source", value: src})
+	}
+	return items
 }

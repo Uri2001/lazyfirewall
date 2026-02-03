@@ -136,6 +136,74 @@ func updateRichRuleCmd(client *firewalld.Client, zone, oldRule, newRule string, 
 	}
 }
 
+func addInterfaceCmd(client *firewalld.Client, zone, iface string, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if permanent {
+			err = client.AddInterfacePermanent(zone, iface)
+		} else {
+			err = client.AddInterfaceRuntime(zone, iface)
+		}
+		return mutationMsg{zone: zone, err: err}
+	}
+}
+
+func removeInterfaceCmd(client *firewalld.Client, zone, iface string, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if permanent {
+			err = client.RemoveInterfacePermanent(zone, iface)
+		} else {
+			err = client.RemoveInterfaceRuntime(zone, iface)
+		}
+		return mutationMsg{zone: zone, err: err}
+	}
+}
+
+func addSourceCmd(client *firewalld.Client, zone, source string, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if permanent {
+			err = client.AddSourcePermanent(zone, source)
+		} else {
+			err = client.AddSourceRuntime(zone, source)
+		}
+		return mutationMsg{zone: zone, err: err}
+	}
+}
+
+func removeSourceCmd(client *firewalld.Client, zone, source string, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if permanent {
+			err = client.RemoveSourcePermanent(zone, source)
+		} else {
+			err = client.RemoveSourceRuntime(zone, source)
+		}
+		return mutationMsg{zone: zone, err: err}
+	}
+}
+
+func setMasqueradeCmd(client *firewalld.Client, zone string, enabled, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if permanent {
+			if enabled {
+				err = client.EnableMasqueradePermanent(zone)
+			} else {
+				err = client.DisableMasqueradePermanent(zone)
+			}
+		} else {
+			if enabled {
+				err = client.EnableMasqueradeRuntime(zone)
+			} else {
+				err = client.DisableMasqueradeRuntime(zone)
+			}
+		}
+		return mutationMsg{zone: zone, err: err}
+	}
+}
+
 func commitRuntimeCmd(client *firewalld.Client, zone string) tea.Cmd {
 	return func() tea.Msg {
 		err := client.RuntimeToPermanent()

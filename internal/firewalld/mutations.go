@@ -191,6 +191,192 @@ func (c *Client) RemoveRichRuleRuntime(zone, rule string) error {
 	return c.call(method, nil, zone, rule)
 }
 
+func (c *Client) AddInterfacePermanent(zone, iface string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("adding interface (permanent)", "zone", zone, "interface", iface)
+	obj, err := c.getConfigZoneObject(zone)
+	if err != nil {
+		return err
+	}
+
+	method := dbusInterface + ".config.zone.addInterface"
+	return c.callObject(obj, method, nil, iface)
+}
+
+func (c *Client) AddInterfaceRuntime(zone, iface string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("adding interface (runtime)", "zone", zone, "interface", iface)
+	method := dbusInterface + ".zone.addInterface"
+	return c.call(method, nil, zone, iface, uint32(0))
+}
+
+func (c *Client) RemoveInterfacePermanent(zone, iface string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("removing interface (permanent)", "zone", zone, "interface", iface)
+	obj, err := c.getConfigZoneObject(zone)
+	if err != nil {
+		return err
+	}
+
+	method := dbusInterface + ".config.zone.removeInterface"
+	return c.callObject(obj, method, nil, iface)
+}
+
+func (c *Client) RemoveInterfaceRuntime(zone, iface string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("removing interface (runtime)", "zone", zone, "interface", iface)
+	method := dbusInterface + ".zone.removeInterface"
+	return c.call(method, nil, zone, iface)
+}
+
+func (c *Client) AddSourcePermanent(zone, source string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("adding source (permanent)", "zone", zone, "source", source)
+	obj, err := c.getConfigZoneObject(zone)
+	if err != nil {
+		return err
+	}
+
+	method := dbusInterface + ".config.zone.addSource"
+	return c.callObject(obj, method, nil, source)
+}
+
+func (c *Client) AddSourceRuntime(zone, source string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("adding source (runtime)", "zone", zone, "source", source)
+	method := dbusInterface + ".zone.addSource"
+	return c.call(method, nil, zone, source, uint32(0))
+}
+
+func (c *Client) RemoveSourcePermanent(zone, source string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("removing source (permanent)", "zone", zone, "source", source)
+	obj, err := c.getConfigZoneObject(zone)
+	if err != nil {
+		return err
+	}
+
+	method := dbusInterface + ".config.zone.removeSource"
+	return c.callObject(obj, method, nil, source)
+}
+
+func (c *Client) RemoveSourceRuntime(zone, source string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("removing source (runtime)", "zone", zone, "source", source)
+	method := dbusInterface + ".zone.removeSource"
+	return c.call(method, nil, zone, source)
+}
+
+func (c *Client) EnableMasqueradePermanent(zone string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("enable masquerade (permanent)", "zone", zone)
+	obj, err := c.getConfigZoneObject(zone)
+	if err != nil {
+		return err
+	}
+
+	method := dbusInterface + ".config.zone.addMasquerade"
+	return c.callObject(obj, method, nil)
+}
+
+func (c *Client) DisableMasqueradePermanent(zone string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("disable masquerade (permanent)", "zone", zone)
+	obj, err := c.getConfigZoneObject(zone)
+	if err != nil {
+		return err
+	}
+
+	method := dbusInterface + ".config.zone.removeMasquerade"
+	return c.callObject(obj, method, nil)
+}
+
+func (c *Client) EnableMasqueradeRuntime(zone string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("enable masquerade (runtime)", "zone", zone)
+	method := dbusInterface + ".zone.addMasquerade"
+	return c.call(method, nil, zone, uint32(0))
+}
+
+func (c *Client) DisableMasqueradeRuntime(zone string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("disable masquerade (runtime)", "zone", zone)
+	method := dbusInterface + ".zone.removeMasquerade"
+	return c.call(method, nil, zone)
+}
+
 func (c *Client) RuntimeToPermanent() error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI

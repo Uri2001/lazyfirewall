@@ -6,6 +6,7 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
@@ -315,6 +316,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.startAddInput()
 			}
 			return m, nil
+		case "i":
+			if m.focus == focusMain && m.tab == tabNetwork {
+				if m.readOnly {
+					m.err = firewalld.ErrPermissionDenied
+					return m, nil
+				}
+				return m, m.startAddInterface()
+			}
+			return m, nil
+		case "s":
+			if m.focus == focusMain && m.tab == tabNetwork {
+				if m.readOnly {
+					m.err = firewalld.ErrPermissionDenied
+					return m, nil
+				}
+				return m, m.startAddSource()
+			}
+			return m, nil
+		case "m":
+			if m.focus == focusMain && m.tab == tabNetwork {
+				if m.readOnly {
+					m.err = firewalld.ErrPermissionDenied
+					return m, nil
+				}
+				return m, m.toggleMasquerade()
+			}
+			return m, nil
 		case "e":
 			if m.focus == focusMain && m.tab == tabRich {
 				if m.readOnly {
@@ -458,6 +486,12 @@ func (m *Model) clampSelections() {
 	if m.richIndex >= len(current.RichRules) {
 		m.richIndex = 0
 	}
+	items := m.networkItems()
+	if len(items) == 0 {
+		m.networkIndex = 0
+	} else if m.networkIndex >= len(items) {
+		m.networkIndex = 0
+	}
 }
 
 func (m *Model) moveMainSelection(delta int) {
@@ -507,6 +541,18 @@ func (m *Model) moveMainSelection(delta int) {
 		}
 		m.richIndex = next
 	case tabNetwork:
+		items := m.networkItems()
+		if len(items) == 0 {
+			return
+		}
+		next := m.networkIndex + delta
+		if next < 0 {
+			next = 0
+		}
+		if next >= len(items) {
+			next = len(items) - 1
+		}
+		m.networkIndex = next
 		return
 	case tabInfo:
 		return
@@ -551,7 +597,11 @@ func (m *Model) startAddInput() tea.Cmd {
 	}
 	m.err = nil
 	if m.tab == tabNetwork || m.tab == tabInfo {
-		m.err = fmt.Errorf("editing not implemented for this tab")
+		if m.tab == tabNetwork {
+			m.err = fmt.Errorf("use i/s/m in Network tab")
+		} else {
+			m.err = fmt.Errorf("editing not implemented for this tab")
+		}
 		return nil
 	}
 	m.input.SetValue("")
@@ -570,6 +620,50 @@ func (m *Model) startAddInput() tea.Cmd {
 	m.input.CursorEnd()
 	m.input.Focus()
 	return nil
+}
+
+func (m *Model) startAddInterface() tea.Cmd {
+	if m.readOnly {
+		m.err = firewalld.ErrPermissionDenied
+		return nil
+	}
+	if m.tab != tabNetwork {
+		return nil
+	}
+	m.err = nil
+	m.input.SetValue("")
+	m.input.Placeholder = "interface name"
+	m.inputMode = inputAddInterface
+	m.input.CursorEnd()
+	m.input.Focus()
+	return nil
+}
+
+func (m *Model) startAddSource() tea.Cmd {
+	if m.readOnly {
+		m.err = firewalld.ErrPermissionDenied
+		return nil
+	}
+	if m.tab != tabNetwork {
+		return nil
+	}
+	m.err = nil
+	m.input.SetValue("")
+	m.input.Placeholder = "source (IP/CIDR)"
+	m.inputMode = inputAddSource
+	m.input.CursorEnd()
+	m.input.Focus()
+	return nil
+}
+
+func (m *Model) toggleMasquerade() tea.Cmd {
+	current := m.currentData()
+	if current == nil || len(m.zones) == 0 {
+		return nil
+	}
+	zone := m.zones[m.selected]
+	enabled := !current.Masquerade
+	return setMasqueradeCmd(m.client, zone, enabled, m.permanent)
 }
 
 func (m *Model) startEditRich() tea.Cmd {
@@ -641,6 +735,24 @@ func (m *Model) submitInput() tea.Cmd {
 			return updateRichRuleCmd(m.client, zone, oldRule, value, m.permanent)
 		}
 		return nil
+	case tabNetwork:
+		switch m.inputMode {
+		case inputAddInterface:
+			m.inputMode = inputNone
+			m.input.Blur()
+			return addInterfaceCmd(m.client, zone, value, m.permanent)
+		case inputAddSource:
+			if net.ParseIP(value) == nil {
+				if _, _, err := net.ParseCIDR(value); err != nil {
+					m.err = fmt.Errorf("invalid source: %s", value)
+					return nil
+				}
+			}
+			m.inputMode = inputNone
+			m.input.Blur()
+			return addSourceCmd(m.client, zone, value, m.permanent)
+		}
+		return nil
 	default:
 		return nil
 	}
@@ -677,8 +789,22 @@ func (m *Model) removeSelected() tea.Cmd {
 		rule := current.RichRules[m.richIndex]
 		return removeRichRuleCmd(m.client, zone, rule, m.permanent)
 	case tabNetwork:
-		m.err = fmt.Errorf("editing not implemented for this tab")
-		return nil
+		items := m.networkItems()
+		if len(items) == 0 {
+			return nil
+		}
+		if m.networkIndex < 0 || m.networkIndex >= len(items) {
+			return nil
+		}
+		item := items[m.networkIndex]
+		switch item.kind {
+		case "iface":
+			return removeInterfaceCmd(m.client, zone, item.value, m.permanent)
+		case "source":
+			return removeSourceCmd(m.client, zone, item.value, m.permanent)
+		default:
+			return nil
+		}
 	case tabInfo:
 		m.err = fmt.Errorf("editing not implemented for this tab")
 		return nil
@@ -702,7 +828,7 @@ func (m *Model) currentIndex() int {
 		return m.richIndex
 	}
 	if m.tab == tabNetwork {
-		return 0
+		return m.networkIndex
 	}
 	if m.tab == tabInfo {
 		return 0
@@ -720,6 +846,7 @@ func (m *Model) setCurrentIndex(index int) {
 		return
 	}
 	if m.tab == tabNetwork {
+		m.networkIndex = index
 		return
 	}
 	if m.tab == tabInfo {
@@ -744,7 +871,12 @@ func (m *Model) currentItems() []string {
 		return current.RichRules
 	}
 	if m.tab == tabNetwork {
-		return nil
+		items := m.networkItems()
+		out := make([]string, 0, len(items))
+		for _, item := range items {
+			out = append(out, item.value)
+		}
+		return out
 	}
 	if m.tab == tabInfo {
 		return nil
