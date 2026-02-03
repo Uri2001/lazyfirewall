@@ -33,6 +33,8 @@ const (
 	inputNone inputMode = iota
 	inputAddService
 	inputAddPort
+	inputAddRich
+	inputEditRich
 	inputSearch
 )
 
@@ -55,6 +57,7 @@ type Model struct {
 	readOnly        bool
 	runtimeDenied   bool
 	permanentDenied bool
+	editRichOld     string
 
 	detailsMode    bool
 	detailsLoading bool
@@ -80,7 +83,7 @@ func NewModel(client *firewalld.Client) Model {
 	sp.Spinner = spinner.Line
 
 	ti := textinput.New()
-	ti.CharLimit = 64
+	ti.CharLimit = 256
 	ti.Width = 32
 	ti.Prompt = ""
 

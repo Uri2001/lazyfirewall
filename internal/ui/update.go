@@ -67,6 +67,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.searchQuery = ""
 					m.input.SetValue("")
 				}
+				if m.inputMode == inputEditRich {
+					m.editRichOld = ""
+				}
 				m.inputMode = inputNone
 				m.input.Blur()
 				return m, nil
@@ -194,6 +197,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.permanentDenied = false
 			m.runtimeData = nil
 			m.permanentData = nil
+			m.editRichOld = ""
 			return m, fetchZonesCmd(m.client)
 		case "c":
 			if m.readOnly {
@@ -248,6 +252,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.permanentDenied = false
 					m.runtimeData = nil
 					m.permanentData = nil
+					m.editRichOld = ""
 					return m, tea.Batch(
 						fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
 						fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
@@ -274,6 +279,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.permanentDenied = false
 					m.runtimeData = nil
 					m.permanentData = nil
+					m.editRichOld = ""
 					return m, tea.Batch(
 						fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
 						fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
@@ -307,6 +313,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				return m, m.startAddInput()
+			}
+			return m, nil
+		case "e":
+			if m.focus == focusMain && m.tab == tabRich {
+				if m.readOnly {
+					m.err = firewalld.ErrPermissionDenied
+					return m, nil
+				}
+				return m, m.startEditRich()
 			}
 			return m, nil
 		case "d":
@@ -346,6 +361,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.permanentDenied = false
 		m.runtimeData = nil
 		m.permanentData = nil
+		m.editRichOld = ""
 		return m, tea.Batch(
 			fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
 			fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
@@ -402,6 +418,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.permanentDenied = false
 		m.runtimeData = nil
 		m.permanentData = nil
+		m.editRichOld = ""
 		return m, tea.Batch(
 			fetchZoneSettingsCmd(m.client, msg.zone, false),
 			fetchZoneSettingsCmd(m.client, msg.zone, true),
@@ -533,11 +550,12 @@ func (m *Model) startAddInput() tea.Cmd {
 		return nil
 	}
 	m.err = nil
-	if m.tab == tabRich || m.tab == tabNetwork || m.tab == tabInfo {
+	if m.tab == tabNetwork || m.tab == tabInfo {
 		m.err = fmt.Errorf("editing not implemented for this tab")
 		return nil
 	}
 	m.input.SetValue("")
+	m.editRichOld = ""
 	switch m.tab {
 	case tabServices:
 		m.input.Placeholder = "service name"
@@ -545,7 +563,32 @@ func (m *Model) startAddInput() tea.Cmd {
 	case tabPorts:
 		m.input.Placeholder = "port/proto (e.g. 80/tcp)"
 		m.inputMode = inputAddPort
+	case tabRich:
+		m.input.Placeholder = "rich rule"
+		m.inputMode = inputAddRich
 	}
+	m.input.CursorEnd()
+	m.input.Focus()
+	return nil
+}
+
+func (m *Model) startEditRich() tea.Cmd {
+	if m.readOnly {
+		m.err = firewalld.ErrPermissionDenied
+		return nil
+	}
+	current := m.currentData()
+	if current == nil || len(current.RichRules) == 0 {
+		return nil
+	}
+	if m.richIndex < 0 || m.richIndex >= len(current.RichRules) {
+		return nil
+	}
+	m.err = nil
+	m.editRichOld = current.RichRules[m.richIndex]
+	m.input.Placeholder = "rich rule"
+	m.input.SetValue(m.editRichOld)
+	m.inputMode = inputEditRich
 	m.input.CursorEnd()
 	m.input.Focus()
 	return nil
@@ -581,6 +624,22 @@ func (m *Model) submitInput() tea.Cmd {
 		m.inputMode = inputNone
 		m.input.Blur()
 		return addPortCmd(m.client, zone, port, m.permanent)
+	case tabRich:
+		switch m.inputMode {
+		case inputAddRich:
+			m.inputMode = inputNone
+			m.input.Blur()
+			return addRichRuleCmd(m.client, zone, value, m.permanent)
+		case inputEditRich:
+			oldRule := m.editRichOld
+			m.editRichOld = ""
+			m.inputMode = inputNone
+			m.input.Blur()
+			if oldRule == value {
+				return nil
+			}
+			return updateRichRuleCmd(m.client, zone, oldRule, value, m.permanent)
+		}
 	default:
 		return nil
 	}
@@ -611,8 +670,11 @@ func (m *Model) removeSelected() tea.Cmd {
 		port := current.Ports[m.portIndex]
 		return removePortCmd(m.client, zone, port, m.permanent)
 	case tabRich:
-		m.err = fmt.Errorf("editing not implemented for this tab")
-		return nil
+		if len(current.RichRules) == 0 {
+			return nil
+		}
+		rule := current.RichRules[m.richIndex]
+		return removeRichRuleCmd(m.client, zone, rule, m.permanent)
 	case tabNetwork:
 		m.err = fmt.Errorf("editing not implemented for this tab")
 		return nil

@@ -94,6 +94,48 @@ func removePortCmd(client *firewalld.Client, zone string, port firewalld.Port, p
 	}
 }
 
+func addRichRuleCmd(client *firewalld.Client, zone, rule string, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if permanent {
+			err = client.AddRichRulePermanent(zone, rule)
+		} else {
+			err = client.AddRichRuleRuntime(zone, rule)
+		}
+		return mutationMsg{zone: zone, err: err}
+	}
+}
+
+func removeRichRuleCmd(client *firewalld.Client, zone, rule string, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if permanent {
+			err = client.RemoveRichRulePermanent(zone, rule)
+		} else {
+			err = client.RemoveRichRuleRuntime(zone, rule)
+		}
+		return mutationMsg{zone: zone, err: err}
+	}
+}
+
+func updateRichRuleCmd(client *firewalld.Client, zone, oldRule, newRule string, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if permanent {
+			if err = client.RemoveRichRulePermanent(zone, oldRule); err != nil {
+				return mutationMsg{zone: zone, err: err}
+			}
+			err = client.AddRichRulePermanent(zone, newRule)
+		} else {
+			if err = client.RemoveRichRuleRuntime(zone, oldRule); err != nil {
+				return mutationMsg{zone: zone, err: err}
+			}
+			err = client.AddRichRuleRuntime(zone, newRule)
+		}
+		return mutationMsg{zone: zone, err: err}
+	}
+}
+
 func commitRuntimeCmd(client *firewalld.Client, zone string) tea.Cmd {
 	return func() tea.Msg {
 		err := client.RuntimeToPermanent()

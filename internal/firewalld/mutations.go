@@ -129,6 +129,68 @@ func (c *Client) RemovePortRuntime(zone string, port Port) error {
 	return c.call(method, nil, zone, port.Port, port.Protocol)
 }
 
+func (c *Client) AddRichRulePermanent(zone, rule string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("adding rich rule (permanent)", "zone", zone, "rule", rule)
+	obj, err := c.getConfigZoneObject(zone)
+	if err != nil {
+		return err
+	}
+
+	method := dbusInterface + ".config.zone.addRichRule"
+	return c.callObject(obj, method, nil, rule)
+}
+
+func (c *Client) AddRichRuleRuntime(zone, rule string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("adding rich rule (runtime)", "zone", zone, "rule", rule)
+	method := dbusInterface + ".zone.addRichRule"
+	return c.call(method, nil, zone, rule, uint32(0))
+}
+
+func (c *Client) RemoveRichRulePermanent(zone, rule string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("removing rich rule (permanent)", "zone", zone, "rule", rule)
+	obj, err := c.getConfigZoneObject(zone)
+	if err != nil {
+		return err
+	}
+
+	method := dbusInterface + ".config.zone.removeRichRule"
+	return c.callObject(obj, method, nil, rule)
+}
+
+func (c *Client) RemoveRichRuleRuntime(zone, rule string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+
+	slog.Info("removing rich rule (runtime)", "zone", zone, "rule", rule)
+	method := dbusInterface + ".zone.removeRichRule"
+	return c.call(method, nil, zone, rule)
+}
+
 func (c *Client) RuntimeToPermanent() error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI

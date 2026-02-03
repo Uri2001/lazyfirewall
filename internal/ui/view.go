@@ -836,6 +836,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("Actions:\n")
 	b.WriteString("  a           Add service/port\n")
 	b.WriteString("  d           Remove service/port\n")
+	b.WriteString("  e           Edit rich rule\n")
 	b.WriteString("  c           Commit runtime → permanent\n")
 	b.WriteString("  u           Reload (revert runtime)\n")
 	b.WriteString("  t           Apply template\n")
@@ -909,6 +910,10 @@ func renderInput(m Model) string {
 		label = "Add service (" + mode + "): "
 	case inputAddPort:
 		label = "Add port (" + mode + "): "
+	case inputAddRich:
+		label = "Add rich rule (" + mode + "): "
+	case inputEditRich:
+		label = "Edit rich rule (" + mode + "): "
 	case inputSearch:
 		label = "Search: "
 	}
