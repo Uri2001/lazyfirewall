@@ -23,6 +23,7 @@ const (
 	tabServices mainTab = iota
 	tabPorts
 	tabRich
+	tabNetwork
 )
 
 type inputMode int

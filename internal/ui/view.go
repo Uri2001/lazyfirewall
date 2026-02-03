@@ -125,6 +125,8 @@ func renderMain(m Model, width int) string {
 			renderPortsList(&b, m, current)
 		case tabRich:
 			renderRichRulesList(&b, m, current)
+		case tabNetwork:
+			renderNetworkView(&b, m, current)
 		}
 	}
 
@@ -140,21 +142,30 @@ func renderTabs(m Model) string {
 	serviceLabel := " Services "
 	portLabel := " Ports "
 	richLabel := " Rich Rules "
+	networkLabel := " Network "
 	switch m.tab {
 	case tabServices:
 		serviceLabel = tabActiveStyle.Render(serviceLabel)
 		portLabel = tabInactiveStyle.Render(portLabel)
 		richLabel = tabInactiveStyle.Render(richLabel)
+		networkLabel = tabInactiveStyle.Render(networkLabel)
 	case tabPorts:
 		serviceLabel = tabInactiveStyle.Render(serviceLabel)
 		portLabel = tabActiveStyle.Render(portLabel)
 		richLabel = tabInactiveStyle.Render(richLabel)
+		networkLabel = tabInactiveStyle.Render(networkLabel)
 	case tabRich:
 		serviceLabel = tabInactiveStyle.Render(serviceLabel)
 		portLabel = tabInactiveStyle.Render(portLabel)
 		richLabel = tabActiveStyle.Render(richLabel)
+		networkLabel = tabInactiveStyle.Render(networkLabel)
+	case tabNetwork:
+		serviceLabel = tabInactiveStyle.Render(serviceLabel)
+		portLabel = tabInactiveStyle.Render(portLabel)
+		richLabel = tabInactiveStyle.Render(richLabel)
+		networkLabel = tabActiveStyle.Render(networkLabel)
 	}
-	return serviceLabel + " " + portLabel + " " + richLabel
+	return serviceLabel + " " + portLabel + " " + richLabel + " " + networkLabel
 }
 
 func renderSplitView(m Model, width int) string {
@@ -184,6 +195,8 @@ func splitLines(m Model) ([]string, []string) {
 		return diffPorts(m.runtimeData, m.permanentData)
 	case tabRich:
 		return diffRichRules(m.runtimeData, m.permanentData)
+	case tabNetwork:
+		return diffNetwork(m.runtimeData, m.permanentData)
 	default:
 		return []string{""}, []string{""}
 	}
@@ -332,6 +345,98 @@ func diffRichRules(runtime, permanent *firewalld.Zone) ([]string, []string) {
 	return left, right
 }
 
+func diffNetwork(runtime, permanent *firewalld.Zone) ([]string, []string) {
+	if runtime == nil || permanent == nil {
+		return []string{dimStyle.Render("(loading)")}, []string{dimStyle.Render("(loading)")}
+	}
+
+	left := make([]string, 0)
+	right := make([]string, 0)
+
+	left = append(left, "Masquerade:")
+	right = append(right, "Masquerade:")
+
+	rMasq := "off"
+	if runtime.Masquerade {
+		rMasq = "on"
+	}
+	pMasq := "off"
+	if permanent.Masquerade {
+		pMasq = "on"
+	}
+	if rMasq != pMasq {
+		left = append(left, "~ "+rMasq)
+		right = append(right, "~ "+pMasq)
+	} else {
+		left = append(left, "  "+rMasq)
+		right = append(right, "  "+pMasq)
+	}
+
+	left = append(left, "", "Interfaces:")
+	right = append(right, "", "Interfaces:")
+	permanentIfaces := make(map[string]struct{}, len(permanent.Interfaces))
+	for _, i := range permanent.Interfaces {
+		permanentIfaces[i] = struct{}{}
+	}
+	runtimeIfaces := make(map[string]struct{}, len(runtime.Interfaces))
+	for _, i := range runtime.Interfaces {
+		runtimeIfaces[i] = struct{}{}
+	}
+	for _, i := range runtime.Interfaces {
+		prefix := "  "
+		if _, ok := permanentIfaces[i]; !ok {
+			prefix = "+ "
+		}
+		left = append(left, prefix+i)
+	}
+	for _, i := range permanent.Interfaces {
+		prefix := "  "
+		if _, ok := runtimeIfaces[i]; !ok {
+			prefix = "- "
+		}
+		right = append(right, prefix+i)
+	}
+	if len(runtime.Interfaces) == 0 {
+		left = append(left, dimStyle.Render("(none)"))
+	}
+	if len(permanent.Interfaces) == 0 {
+		right = append(right, dimStyle.Render("(none)"))
+	}
+
+	left = append(left, "", "Sources:")
+	right = append(right, "", "Sources:")
+	permanentSources := make(map[string]struct{}, len(permanent.Sources))
+	for _, s := range permanent.Sources {
+		permanentSources[s] = struct{}{}
+	}
+	runtimeSources := make(map[string]struct{}, len(runtime.Sources))
+	for _, s := range runtime.Sources {
+		runtimeSources[s] = struct{}{}
+	}
+	for _, s := range runtime.Sources {
+		prefix := "  "
+		if _, ok := permanentSources[s]; !ok {
+			prefix = "+ "
+		}
+		left = append(left, prefix+s)
+	}
+	for _, s := range permanent.Sources {
+		prefix := "  "
+		if _, ok := runtimeSources[s]; !ok {
+			prefix = "- "
+		}
+		right = append(right, prefix+s)
+	}
+	if len(runtime.Sources) == 0 {
+		left = append(left, dimStyle.Render("(none)"))
+	}
+	if len(permanent.Sources) == 0 {
+		right = append(right, dimStyle.Render("(none)"))
+	}
+
+	return left, right
+}
+
 func renderServicesList(b *strings.Builder, m Model, current *firewalld.Zone) {
 	if len(current.Services) == 0 {
 		b.WriteString(dimStyle.Render("  (none)"))
@@ -426,6 +531,36 @@ func renderRichRulesList(b *strings.Builder, m Model, current *firewalld.Zone) {
 	}
 }
 
+func renderNetworkView(b *strings.Builder, m Model, current *firewalld.Zone) {
+	masq := "OFF"
+	if current.Masquerade {
+		masq = "ON"
+	}
+	b.WriteString("Masquerade: " + masq + "\n\n")
+
+	b.WriteString("Interfaces:\n")
+	if len(current.Interfaces) == 0 {
+		b.WriteString(dimStyle.Render("  (none)"))
+		b.WriteString("\n")
+	} else {
+		for _, i := range current.Interfaces {
+			line := highlightMatch(i, m.searchQuery)
+			b.WriteString("  - " + line + "\n")
+		}
+	}
+
+	b.WriteString("\nSources:\n")
+	if len(current.Sources) == 0 {
+		b.WriteString(dimStyle.Render("  (none)"))
+		b.WriteString("\n")
+	} else {
+		for _, s := range current.Sources {
+			line := highlightMatch(s, m.searchQuery)
+			b.WriteString("  - " + line + "\n")
+		}
+	}
+}
+
 func portDiffMark(p firewalld.Port, permanent *firewalld.Zone) string {
 	if permanent == nil {
 		return ""
@@ -477,7 +612,7 @@ func renderStatus(m Model) string {
 	if m.searchQuery != "" {
 		searchHint = "  /: search  n/N: next"
 	}
-	status := fmt.Sprintf("Mode: %s | 1/2/3: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, searchHint)
+	status := fmt.Sprintf("Mode: %s | 1/2/3/4: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, searchHint)
 	if legend != "" {
 		status = status + "\n" + legend
 	}

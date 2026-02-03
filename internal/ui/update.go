@@ -77,6 +77,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "3":
 			m.tab = tabRich
 			return m, nil
+		case "4":
+			m.tab = tabNetwork
+			return m, nil
 		case "h", "left":
 			m.prevTab()
 			return m, nil
@@ -306,6 +309,8 @@ func (m *Model) moveMainSelection(delta int) {
 			next = len(current.RichRules) - 1
 		}
 		m.richIndex = next
+	case tabNetwork:
+		return
 	}
 }
 
@@ -342,8 +347,8 @@ func (m *Model) moveMatchSelection(forward bool) {
 
 func (m *Model) startAddInput() tea.Cmd {
 	m.err = nil
-	if m.tab == tabRich {
-		m.err = fmt.Errorf("rich rules editing not implemented")
+	if m.tab == tabRich || m.tab == tabNetwork {
+		m.err = fmt.Errorf("editing not implemented for this tab")
 		return nil
 	}
 	m.input.SetValue("")
@@ -416,7 +421,10 @@ func (m *Model) removeSelected() tea.Cmd {
 		port := current.Ports[m.portIndex]
 		return removePortCmd(m.client, zone, port, m.permanent)
 	case tabRich:
-		m.err = fmt.Errorf("rich rules editing not implemented")
+		m.err = fmt.Errorf("editing not implemented for this tab")
+		return nil
+	case tabNetwork:
+		m.err = fmt.Errorf("editing not implemented for this tab")
 		return nil
 	default:
 		return nil
@@ -437,6 +445,9 @@ func (m *Model) currentIndex() int {
 	if m.tab == tabRich {
 		return m.richIndex
 	}
+	if m.tab == tabNetwork {
+		return 0
+	}
 	return m.serviceIndex
 }
 
@@ -447,6 +458,9 @@ func (m *Model) setCurrentIndex(index int) {
 	}
 	if m.tab == tabRich {
 		m.richIndex = index
+		return
+	}
+	if m.tab == tabNetwork {
 		return
 	}
 	m.serviceIndex = index
@@ -466,6 +480,9 @@ func (m *Model) currentItems() []string {
 	}
 	if m.tab == tabRich {
 		return current.RichRules
+	}
+	if m.tab == tabNetwork {
+		return nil
 	}
 	return current.Services
 }
@@ -512,6 +529,8 @@ func (m *Model) nextTab() {
 	case tabPorts:
 		m.tab = tabRich
 	case tabRich:
+		m.tab = tabNetwork
+	case tabNetwork:
 		m.tab = tabServices
 	}
 }
@@ -519,11 +538,13 @@ func (m *Model) nextTab() {
 func (m *Model) prevTab() {
 	switch m.tab {
 	case tabServices:
-		m.tab = tabRich
+		m.tab = tabNetwork
 	case tabPorts:
 		m.tab = tabServices
 	case tabRich:
 		m.tab = tabPorts
+	case tabNetwork:
+		m.tab = tabRich
 	}
 }
 
