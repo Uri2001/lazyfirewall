@@ -10,6 +10,14 @@ type Port struct {
 	Protocol string
 }
 
+type ServiceInfo struct {
+	Name        string
+	Short       string
+	Description string
+	Ports       []Port
+	Modules     []string
+}
+
 type Zone struct {
 	Name        string
 	Services    []string

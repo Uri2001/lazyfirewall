@@ -118,17 +118,21 @@ func renderMain(m Model, width int) string {
 	if m.splitView {
 		b.WriteString(renderSplitView(m, width))
 	} else {
-		switch m.tab {
-		case tabServices:
-			renderServicesList(&b, m, current)
-		case tabPorts:
-			renderPortsList(&b, m, current)
-		case tabRich:
-			renderRichRulesList(&b, m, current)
-		case tabNetwork:
-			renderNetworkView(&b, m, current)
-		case tabInfo:
-			renderInfoView(&b, m, current)
+		if m.detailsMode && m.tab == tabServices {
+			renderServiceDetails(&b, m)
+		} else {
+			switch m.tab {
+			case tabServices:
+				renderServicesList(&b, m, current)
+			case tabPorts:
+				renderPortsList(&b, m, current)
+			case tabRich:
+				renderRichRulesList(&b, m, current)
+			case tabNetwork:
+				renderNetworkView(&b, m, current)
+			case tabInfo:
+				renderInfoView(&b, m, current)
+			}
 		}
 	}
 
@@ -728,6 +732,67 @@ func renderInfoView(b *strings.Builder, m Model, current *firewalld.Zone) {
 
 	b.WriteString("\nDescription:\n")
 	b.WriteString("  " + highlightMatch(desc, m.searchQuery) + "\n")
+}
+
+func renderServiceDetails(b *strings.Builder, m Model) {
+	name := m.detailsName
+	if name == "" {
+		name = "(none)"
+	}
+
+	header := "Service Details: " + name
+	if m.detailsLoading {
+		header = header + " " + m.spinner.View()
+	}
+	b.WriteString(titleStyle.Render(header))
+	b.WriteString("\n\n")
+
+	if m.detailsErr != nil {
+		b.WriteString(errorStyle.Render("Error: " + m.detailsErr.Error()))
+		b.WriteString("\n")
+		return
+	}
+	if m.detailsLoading {
+		b.WriteString(dimStyle.Render("Loading..."))
+		b.WriteString("\n")
+		return
+	}
+	if m.details == nil {
+		b.WriteString(dimStyle.Render("No details available"))
+		b.WriteString("\n")
+		return
+	}
+
+	info := m.details
+	if info.Short != "" {
+		b.WriteString("Short: " + info.Short + "\n")
+	}
+	if info.Description != "" {
+		b.WriteString("\nDescription:\n  " + info.Description + "\n")
+	}
+
+	b.WriteString("\nPorts:\n")
+	if len(info.Ports) == 0 {
+		b.WriteString(dimStyle.Render("  (none)"))
+		b.WriteString("\n")
+	} else {
+		for _, p := range info.Ports {
+			b.WriteString("  - " + p.Port + "/" + p.Protocol + "\n")
+		}
+	}
+
+	b.WriteString("\nModules:\n")
+	if len(info.Modules) == 0 {
+		b.WriteString(dimStyle.Render("  (none)"))
+		b.WriteString("\n")
+	} else {
+		for _, mod := range info.Modules {
+			b.WriteString("  - " + mod + "\n")
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("Press Enter or Esc to close"))
 }
 
 func portDiffMark(p firewalld.Port, permanent *firewalld.Zone) string {

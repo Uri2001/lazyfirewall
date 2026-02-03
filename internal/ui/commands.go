@@ -26,6 +26,12 @@ type mutationMsg struct {
 	err  error
 }
 
+type serviceDetailsMsg struct {
+	service string
+	info    *firewalld.ServiceInfo
+	err     error
+}
+
 func fetchZonesCmd(client *firewalld.Client) tea.Cmd {
 	return func() tea.Msg {
 		zones, err := client.ListZones()
@@ -99,5 +105,12 @@ func reloadCmd(client *firewalld.Client, zone string) tea.Cmd {
 	return func() tea.Msg {
 		err := client.Reload()
 		return mutationMsg{zone: zone, err: err}
+	}
+}
+
+func fetchServiceDetailsCmd(client *firewalld.Client, service string) tea.Cmd {
+	return func() tea.Msg {
+		info, err := client.GetServiceDetails(service)
+		return serviceDetailsMsg{service: service, info: info, err: err}
 	}
 }

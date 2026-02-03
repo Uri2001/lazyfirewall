@@ -52,6 +52,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	if m.detailsMode {
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "esc", "enter":
+				m.detailsMode = false
+				m.detailsLoading = false
+				m.detailsErr = nil
+				return m, nil
+			}
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -69,24 +81,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "1":
+			m.detailsMode = false
 			m.tab = tabServices
 			return m, nil
 		case "2":
+			m.detailsMode = false
 			m.tab = tabPorts
 			return m, nil
 		case "3":
+			m.detailsMode = false
 			m.tab = tabRich
 			return m, nil
 		case "4":
+			m.detailsMode = false
 			m.tab = tabNetwork
 			return m, nil
 		case "5":
+			m.detailsMode = false
 			m.tab = tabInfo
 			return m, nil
 		case "h", "left":
+			m.detailsMode = false
 			m.prevTab()
 			return m, nil
 		case "l", "right":
+			m.detailsMode = false
 			m.nextTab()
 			return m, nil
 		case "S":
@@ -153,6 +172,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.loading = true
 					m.err = nil
 					m.pendingZone = m.zones[m.selected]
+					m.detailsMode = false
+					m.detailsName = ""
+					m.details = nil
+					m.detailsErr = nil
+					m.detailsLoading = false
 					return m, tea.Batch(
 						fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
 						fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
@@ -169,6 +193,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.loading = true
 					m.err = nil
 					m.pendingZone = m.zones[m.selected]
+					m.detailsMode = false
+					m.detailsName = ""
+					m.details = nil
+					m.detailsErr = nil
+					m.detailsLoading = false
 					return m, tea.Batch(
 						fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
 						fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
@@ -177,6 +206,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.moveMainSelection(-1)
+			return m, nil
+		case "enter":
+			if m.focus == focusMain && m.tab == tabServices {
+				service := m.currentService()
+				if service == "" {
+					return m, nil
+				}
+				if m.detailsMode && m.detailsName == service {
+					m.detailsMode = false
+					return m, nil
+				}
+				m.detailsMode = true
+				m.detailsLoading = true
+				m.detailsErr = nil
+				m.detailsName = service
+				return m, fetchServiceDetailsCmd(m.client, service)
+			}
 			return m, nil
 		case "a":
 			if m.focus == focusMain {
@@ -206,6 +252,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.loading = true
 		m.pendingZone = m.zones[m.selected]
+		m.detailsMode = false
+		m.detailsName = ""
+		m.details = nil
+		m.detailsErr = nil
+		m.detailsLoading = false
 		return m, tea.Batch(
 			fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
 			fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
@@ -237,10 +288,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.err = nil
 		m.pendingZone = msg.zone
+		m.detailsMode = false
+		m.detailsName = ""
+		m.details = nil
+		m.detailsErr = nil
+		m.detailsLoading = false
 		return m, tea.Batch(
 			fetchZoneSettingsCmd(m.client, msg.zone, false),
 			fetchZoneSettingsCmd(m.client, msg.zone, true),
 		)
+	case serviceDetailsMsg:
+		if msg.service != m.detailsName {
+			return m, nil
+		}
+		m.detailsLoading = false
+		if msg.err != nil {
+			m.detailsErr = msg.err
+			return m, nil
+		}
+		m.detailsErr = nil
+		m.details = msg.info
+		return m, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -502,6 +570,17 @@ func (m *Model) currentItems() []string {
 		return nil
 	}
 	return current.Services
+}
+
+func (m *Model) currentService() string {
+	current := m.currentData()
+	if current == nil || len(current.Services) == 0 {
+		return ""
+	}
+	if m.serviceIndex < 0 || m.serviceIndex >= len(current.Services) {
+		return ""
+	}
+	return current.Services[m.serviceIndex]
 }
 
 func (m *Model) currentMatchIndices() []int {

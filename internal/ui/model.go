@@ -50,6 +50,12 @@ type Model struct {
 	splitView    bool
 	searchQuery  string
 
+	detailsMode    bool
+	detailsLoading bool
+	detailsName    string
+	details        *firewalld.ServiceInfo
+	detailsErr     error
+
 	runtimeData   *firewalld.Zone
 	permanentData *firewalld.Zone
 	loading       bool
