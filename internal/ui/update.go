@@ -68,11 +68,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focus = focusZones
 			}
 			return m, nil
-		case "1", "h", "left":
+		case "1":
 			m.tab = tabServices
 			return m, nil
-		case "2", "l", "right":
+		case "2":
 			m.tab = tabPorts
+			return m, nil
+		case "3":
+			m.tab = tabRich
+			return m, nil
+		case "h", "left":
+			m.prevTab()
+			return m, nil
+		case "l", "right":
+			m.nextTab()
 			return m, nil
 		case "S":
 			m.splitView = !m.splitView
@@ -246,6 +255,9 @@ func (m *Model) clampSelections() {
 	if m.portIndex >= len(current.Ports) {
 		m.portIndex = 0
 	}
+	if m.richIndex >= len(current.RichRules) {
+		m.richIndex = 0
+	}
 }
 
 func (m *Model) moveMainSelection(delta int) {
@@ -282,6 +294,18 @@ func (m *Model) moveMainSelection(delta int) {
 			next = len(current.Ports) - 1
 		}
 		m.portIndex = next
+	case tabRich:
+		if len(current.RichRules) == 0 {
+			return
+		}
+		next := m.richIndex + delta
+		if next < 0 {
+			next = 0
+		}
+		if next >= len(current.RichRules) {
+			next = len(current.RichRules) - 1
+		}
+		m.richIndex = next
 	}
 }
 
@@ -318,6 +342,10 @@ func (m *Model) moveMatchSelection(forward bool) {
 
 func (m *Model) startAddInput() tea.Cmd {
 	m.err = nil
+	if m.tab == tabRich {
+		m.err = fmt.Errorf("rich rules editing not implemented")
+		return nil
+	}
 	m.input.SetValue("")
 	switch m.tab {
 	case tabServices:
@@ -387,6 +415,9 @@ func (m *Model) removeSelected() tea.Cmd {
 		}
 		port := current.Ports[m.portIndex]
 		return removePortCmd(m.client, zone, port, m.permanent)
+	case tabRich:
+		m.err = fmt.Errorf("rich rules editing not implemented")
+		return nil
 	default:
 		return nil
 	}
@@ -403,12 +434,19 @@ func (m *Model) currentIndex() int {
 	if m.tab == tabPorts {
 		return m.portIndex
 	}
+	if m.tab == tabRich {
+		return m.richIndex
+	}
 	return m.serviceIndex
 }
 
 func (m *Model) setCurrentIndex(index int) {
 	if m.tab == tabPorts {
 		m.portIndex = index
+		return
+	}
+	if m.tab == tabRich {
+		m.richIndex = index
 		return
 	}
 	m.serviceIndex = index
@@ -425,6 +463,9 @@ func (m *Model) currentItems() []string {
 			items = append(items, p.Port+"/"+p.Protocol)
 		}
 		return items
+	}
+	if m.tab == tabRich {
+		return current.RichRules
 	}
 	return current.Services
 }
@@ -462,6 +503,28 @@ func matchIndices(items []string, query string) []int {
 		}
 	}
 	return indices
+}
+
+func (m *Model) nextTab() {
+	switch m.tab {
+	case tabServices:
+		m.tab = tabPorts
+	case tabPorts:
+		m.tab = tabRich
+	case tabRich:
+		m.tab = tabServices
+	}
+}
+
+func (m *Model) prevTab() {
+	switch m.tab {
+	case tabServices:
+		m.tab = tabRich
+	case tabPorts:
+		m.tab = tabServices
+	case tabRich:
+		m.tab = tabPorts
+	}
 }
 
 func parsePortInput(value string) (firewalld.Port, error) {

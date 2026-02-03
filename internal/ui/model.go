@@ -22,6 +22,7 @@ type mainTab int
 const (
 	tabServices mainTab = iota
 	tabPorts
+	tabRich
 )
 
 type inputMode int
@@ -43,6 +44,7 @@ type Model struct {
 	tab          mainTab
 	serviceIndex int
 	portIndex    int
+	richIndex    int
 	splitView    bool
 	searchQuery  string
 

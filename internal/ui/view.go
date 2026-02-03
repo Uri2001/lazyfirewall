@@ -123,6 +123,8 @@ func renderMain(m Model, width int) string {
 			renderServicesList(&b, m, current)
 		case tabPorts:
 			renderPortsList(&b, m, current)
+		case tabRich:
+			renderRichRulesList(&b, m, current)
 		}
 	}
 
@@ -137,14 +139,22 @@ func renderMain(m Model, width int) string {
 func renderTabs(m Model) string {
 	serviceLabel := " Services "
 	portLabel := " Ports "
-	if m.tab == tabServices {
+	richLabel := " Rich Rules "
+	switch m.tab {
+	case tabServices:
 		serviceLabel = tabActiveStyle.Render(serviceLabel)
 		portLabel = tabInactiveStyle.Render(portLabel)
-	} else {
+		richLabel = tabInactiveStyle.Render(richLabel)
+	case tabPorts:
 		serviceLabel = tabInactiveStyle.Render(serviceLabel)
 		portLabel = tabActiveStyle.Render(portLabel)
+		richLabel = tabInactiveStyle.Render(richLabel)
+	case tabRich:
+		serviceLabel = tabInactiveStyle.Render(serviceLabel)
+		portLabel = tabInactiveStyle.Render(portLabel)
+		richLabel = tabActiveStyle.Render(richLabel)
 	}
-	return serviceLabel + " " + portLabel
+	return serviceLabel + " " + portLabel + " " + richLabel
 }
 
 func renderSplitView(m Model, width int) string {
@@ -172,6 +182,8 @@ func splitLines(m Model) ([]string, []string) {
 		return diffServices(m.runtimeData, m.permanentData)
 	case tabPorts:
 		return diffPorts(m.runtimeData, m.permanentData)
+	case tabRich:
+		return diffRichRules(m.runtimeData, m.permanentData)
 	default:
 		return []string{""}, []string{""}
 	}
@@ -278,6 +290,48 @@ func diffPorts(runtime, permanent *firewalld.Zone) ([]string, []string) {
 	return left, right
 }
 
+func diffRichRules(runtime, permanent *firewalld.Zone) ([]string, []string) {
+	if runtime == nil || permanent == nil {
+		return []string{dimStyle.Render("(loading)")}, []string{dimStyle.Render("(loading)")}
+	}
+
+	permanentSet := make(map[string]struct{}, len(permanent.RichRules))
+	for _, r := range permanent.RichRules {
+		permanentSet[r] = struct{}{}
+	}
+	runtimeSet := make(map[string]struct{}, len(runtime.RichRules))
+	for _, r := range runtime.RichRules {
+		runtimeSet[r] = struct{}{}
+	}
+
+	left := make([]string, 0, len(runtime.RichRules))
+	for _, r := range runtime.RichRules {
+		prefix := "  "
+		if _, ok := permanentSet[r]; !ok {
+			prefix = "+ "
+		}
+		left = append(left, prefix+r)
+	}
+
+	right := make([]string, 0, len(permanent.RichRules))
+	for _, r := range permanent.RichRules {
+		prefix := "  "
+		if _, ok := runtimeSet[r]; !ok {
+			prefix = "- "
+		}
+		right = append(right, prefix+r)
+	}
+
+	if len(left) == 0 {
+		left = []string{dimStyle.Render("(none)")}
+	}
+	if len(right) == 0 {
+		right = []string{dimStyle.Render("(none)")}
+	}
+
+	return left, right
+}
+
 func renderServicesList(b *strings.Builder, m Model, current *firewalld.Zone) {
 	if len(current.Services) == 0 {
 		b.WriteString(dimStyle.Render("  (none)"))
@@ -328,6 +382,39 @@ func renderPortsList(b *strings.Builder, m Model, current *firewalld.Zone) {
 			}
 		}
 		if i == m.portIndex {
+			prefix = "› "
+			if m.focus == focusMain {
+				line = selectedStyle.Render(line)
+			} else {
+				line = titleStyle.Render(line)
+			}
+		}
+		b.WriteString(prefix + line + "\n")
+	}
+}
+
+func renderRichRulesList(b *strings.Builder, m Model, current *firewalld.Zone) {
+	if len(current.RichRules) == 0 {
+		b.WriteString(dimStyle.Render("  (none)"))
+		return
+	}
+
+	permanentSet := make(map[string]struct{})
+	if !m.permanent && m.permanentData != nil {
+		for _, r := range m.permanentData.RichRules {
+			permanentSet[r] = struct{}{}
+		}
+	}
+
+	for i, r := range current.RichRules {
+		prefix := "  "
+		line := highlightMatch(r, m.searchQuery)
+		if !m.permanent && m.permanentData != nil {
+			if _, ok := permanentSet[r]; !ok {
+				line = line + " *"
+			}
+		}
+		if i == m.richIndex {
 			prefix = "› "
 			if m.focus == focusMain {
 				line = selectedStyle.Render(line)
@@ -390,7 +477,7 @@ func renderStatus(m Model) string {
 	if m.searchQuery != "" {
 		searchHint = "  /: search  n/N: next"
 	}
-	status := fmt.Sprintf("Mode: %s | 1/2: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, searchHint)
+	status := fmt.Sprintf("Mode: %s | 1/2/3: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, searchHint)
 	if legend != "" {
 		status = status + "\n" + legend
 	}
