@@ -114,3 +114,33 @@ func fetchServiceDetailsCmd(client *firewalld.Client, service string) tea.Cmd {
 		return serviceDetailsMsg{service: service, info: info, err: err}
 	}
 }
+
+func applyTemplateCmd(client *firewalld.Client, zone string, services []string, ports []firewalld.Port, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		if permanent {
+			for _, s := range services {
+				if err := client.AddServicePermanent(zone, s); err != nil {
+					return mutationMsg{zone: zone, err: err}
+				}
+			}
+			for _, p := range ports {
+				if err := client.AddPortPermanent(zone, p); err != nil {
+					return mutationMsg{zone: zone, err: err}
+				}
+			}
+			return mutationMsg{zone: zone, err: nil}
+		}
+
+		for _, s := range services {
+			if err := client.AddServiceRuntime(zone, s); err != nil {
+				return mutationMsg{zone: zone, err: err}
+			}
+		}
+		for _, p := range ports {
+			if err := client.AddPortRuntime(zone, p); err != nil {
+				return mutationMsg{zone: zone, err: err}
+			}
+		}
+		return mutationMsg{zone: zone, err: nil}
+	}
+}

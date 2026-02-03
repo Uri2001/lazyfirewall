@@ -118,7 +118,9 @@ func renderMain(m Model, width int) string {
 	if m.splitView {
 		b.WriteString(renderSplitView(m, width))
 	} else {
-		if m.detailsMode && m.tab == tabServices {
+		if m.templateMode {
+			renderTemplates(&b, m)
+		} else if m.detailsMode && m.tab == tabServices {
 			renderServiceDetails(&b, m)
 		} else {
 			switch m.tab {
@@ -795,6 +797,32 @@ func renderServiceDetails(b *strings.Builder, m Model) {
 	b.WriteString(dimStyle.Render("Press Enter or Esc to close"))
 }
 
+func renderTemplates(b *strings.Builder, m Model) {
+	b.WriteString(titleStyle.Render("Apply Template"))
+	b.WriteString("\n\n")
+	for i, tpl := range defaultTemplates {
+		prefix := "  "
+		line := tpl.Name
+		if i == m.templateIndex {
+			prefix = "› "
+			line = selectedStyle.Render(line)
+		}
+		b.WriteString(prefix + line + "\n")
+	}
+
+	if m.templateIndex >= 0 && m.templateIndex < len(defaultTemplates) {
+		desc := defaultTemplates[m.templateIndex].Description
+		if desc != "" {
+			b.WriteString("\n")
+			b.WriteString(dimStyle.Render(desc))
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("Enter to apply, Esc to cancel"))
+}
+
 func portDiffMark(p firewalld.Port, permanent *firewalld.Zone) string {
 	if permanent == nil {
 		return ""
@@ -842,9 +870,9 @@ func renderStatus(m Model) string {
 	} else if !m.permanent {
 		legend = "Legend: * runtime-only  ~ differs"
 	}
-	searchHint := "  /: search"
+	searchHint := "  /: search  t: templates"
 	if m.searchQuery != "" {
-		searchHint = "  /: search  n/N: next"
+		searchHint = "  /: search  n/N: next  t: templates"
 	}
 	status := fmt.Sprintf("Mode: %s | 1/2/3/4/5: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, searchHint)
 	if legend != "" {

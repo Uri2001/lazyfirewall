@@ -43,12 +43,14 @@ type Model struct {
 	focus     focusArea
 	permanent bool
 
-	tab          mainTab
-	serviceIndex int
-	portIndex    int
-	richIndex    int
-	splitView    bool
-	searchQuery  string
+	tab           mainTab
+	serviceIndex  int
+	portIndex     int
+	richIndex     int
+	splitView     bool
+	searchQuery   string
+	templateMode  bool
+	templateIndex int
 
 	detailsMode    bool
 	detailsLoading bool

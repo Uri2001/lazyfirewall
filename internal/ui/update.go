@@ -19,6 +19,28 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.templateMode {
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "esc", "q", "t":
+				m.templateMode = false
+				return m, nil
+			case "j", "down":
+				if m.templateIndex < len(defaultTemplates)-1 {
+					m.templateIndex++
+				}
+				return m, nil
+			case "k", "up":
+				if m.templateIndex > 0 {
+					m.templateIndex--
+				}
+				return m, nil
+			case "enter":
+				return m, m.applyTemplate()
+			}
+		}
+	}
+
 	if m.inputMode != inputNone {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
@@ -111,6 +133,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "S":
 			m.splitView = !m.splitView
 			return m, nil
+		case "t":
+			m.templateMode = true
+			m.templateIndex = 0
+			return m, nil
 		case "/":
 			if m.splitView {
 				m.err = fmt.Errorf("search disabled in split view")
@@ -173,6 +199,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.err = nil
 					m.pendingZone = m.zones[m.selected]
 					m.detailsMode = false
+					m.templateMode = false
 					m.detailsName = ""
 					m.details = nil
 					m.detailsErr = nil
@@ -194,6 +221,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.err = nil
 					m.pendingZone = m.zones[m.selected]
 					m.detailsMode = false
+					m.templateMode = false
 					m.detailsName = ""
 					m.details = nil
 					m.detailsErr = nil
@@ -253,6 +281,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.pendingZone = m.zones[m.selected]
 		m.detailsMode = false
+		m.templateMode = false
 		m.detailsName = ""
 		m.details = nil
 		m.detailsErr = nil
@@ -289,6 +318,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		m.pendingZone = msg.zone
 		m.detailsMode = false
+		m.templateMode = false
 		m.detailsName = ""
 		m.details = nil
 		m.detailsErr = nil
@@ -581,6 +611,65 @@ func (m *Model) currentService() string {
 		return ""
 	}
 	return current.Services[m.serviceIndex]
+}
+
+func (m *Model) applyTemplate() tea.Cmd {
+	if len(m.zones) == 0 {
+		m.err = fmt.Errorf("no zone selected")
+		return nil
+	}
+	current := m.currentData()
+	if current == nil {
+		m.err = fmt.Errorf("no data loaded")
+		return nil
+	}
+	if m.templateIndex < 0 || m.templateIndex >= len(defaultTemplates) {
+		m.err = fmt.Errorf("invalid template selection")
+		return nil
+	}
+
+	tpl := defaultTemplates[m.templateIndex]
+	services := filterMissingServices(tpl.Services, current.Services)
+	ports := filterMissingPorts(tpl.Ports, current.Ports)
+	if len(services) == 0 && len(ports) == 0 {
+		m.err = fmt.Errorf("template already applied")
+		return nil
+	}
+
+	m.templateMode = false
+	m.loading = true
+	m.err = nil
+	zone := m.zones[m.selected]
+	m.pendingZone = zone
+	return applyTemplateCmd(m.client, zone, services, ports, m.permanent)
+}
+
+func filterMissingServices(template, current []string) []string {
+	currentSet := make(map[string]struct{}, len(current))
+	for _, s := range current {
+		currentSet[s] = struct{}{}
+	}
+	out := make([]string, 0, len(template))
+	for _, s := range template {
+		if _, ok := currentSet[s]; !ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func filterMissingPorts(template, current []firewalld.Port) []firewalld.Port {
+	currentSet := make(map[string]struct{}, len(current))
+	for _, p := range current {
+		currentSet[p.Port+"/"+p.Protocol] = struct{}{}
+	}
+	out := make([]firewalld.Port, 0, len(template))
+	for _, p := range template {
+		if _, ok := currentSet[p.Port+"/"+p.Protocol]; !ok {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (m *Model) currentMatchIndices() []int {
