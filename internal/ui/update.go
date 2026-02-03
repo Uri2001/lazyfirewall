@@ -640,6 +640,7 @@ func (m *Model) submitInput() tea.Cmd {
 			}
 			return updateRichRuleCmd(m.client, zone, oldRule, value, m.permanent)
 		}
+		return nil
 	default:
 		return nil
 	}
