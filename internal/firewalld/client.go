@@ -181,17 +181,8 @@ func (c *Client) callObject(obj dbus.BusObject, method string, out any, args ...
 }
 
 func (c *Client) ListZones() ([]string, error) {
-	var zones []string
-
-	method := dbusInterface + ".zone.getZones"
-	if c.apiVersion == APIv1 {
-		method = dbusInterface + ".getZones"
+	if c.readOnly {
+		return c.listZonesRuntime()
 	}
-
-	if err := c.call(method, &zones); err != nil {
-		return nil, err
-	}
-
-	slog.Debug("zones listed", "count", len(zones), "zones", zones)
-	return zones, nil
+	return c.listZonesPermanent()
 }

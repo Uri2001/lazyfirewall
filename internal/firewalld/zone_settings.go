@@ -4,6 +4,7 @@
 package firewalld
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -32,6 +33,9 @@ func (c *Client) getZoneSettingsRuntime(zone string) (*Zone, error) {
 		if isPermissionDenied(err) {
 			return nil, ErrPermissionDenied
 		}
+		if isInvalidZone(err) {
+			return nil, ErrInvalidZone
+		}
 		return nil, err
 	}
 
@@ -52,6 +56,9 @@ func (c *Client) getZoneSettingsPermanent(zone string) (*Zone, error) {
 		if isPermissionDenied(err) {
 			return nil, ErrPermissionDenied
 		}
+		if isInvalidZone(err) {
+			return nil, ErrInvalidZone
+		}
 		return nil, err
 	}
 
@@ -65,6 +72,9 @@ func (c *Client) getConfigZoneObject(zone string) (dbus.BusObject, error) {
 	if err := c.callObject(configObj, method, &path, zone); err != nil {
 		if isPermissionDenied(err) {
 			return nil, ErrPermissionDenied
+		}
+		if isInvalidZone(err) {
+			return nil, ErrInvalidZone
 		}
 		return nil, err
 	}
@@ -181,6 +191,22 @@ func variantToPorts(v dbus.Variant) ([]Port, error) {
 	default:
 		return nil, fmt.Errorf("unexpected port format: %T", val)
 	}
+}
+
+func isInvalidZone(err error) bool {
+	var dbusErr *dbus.Error
+	if errors.As(err, &dbusErr) {
+		if strings.Contains(strings.ToLower(dbusErr.Name), "invalid_zone") ||
+			strings.Contains(strings.ToLower(dbusErr.Name), "invalidzone") {
+			return true
+		}
+	}
+
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "invalid zone") || strings.Contains(msg, "invalid_zone") {
+		return true
+	}
+	return false
 }
 
 func parsePortStrings(items []string) ([]Port, error) {

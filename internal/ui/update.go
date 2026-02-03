@@ -17,7 +17,7 @@ import (
 )
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, fetchZonesCmd(m.client))
+	return tea.Batch(m.spinner.Tick, fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client))
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -182,6 +182,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input.Focus()
 			return m, nil
 		case "n":
+			if m.focus == focusZones {
+				if m.readOnly {
+					m.err = firewalld.ErrPermissionDenied
+					return m, nil
+				}
+				return m, m.startAddZone()
+			}
 			if m.searchQuery != "" && !m.splitView && m.focus == focusMain {
 				m.moveMatchSelection(true)
 			}
@@ -196,10 +203,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = nil
 			m.runtimeDenied = false
 			m.permanentDenied = false
+			m.runtimeInvalid = false
 			m.runtimeData = nil
 			m.permanentData = nil
 			m.editRichOld = ""
-			return m, fetchZonesCmd(m.client)
+			return m, tea.Batch(fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client))
 		case "c":
 			if m.readOnly {
 				m.err = firewalld.ErrPermissionDenied
@@ -229,6 +237,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.zones) > 0 && m.selected < len(m.zones) {
 				m.loading = true
 				m.err = nil
+				m.runtimeInvalid = false
 				m.pendingZone = m.zones[m.selected]
 				return m, tea.Batch(
 					fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
@@ -242,6 +251,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selected++
 					m.loading = true
 					m.err = nil
+					m.runtimeInvalid = false
 					m.pendingZone = m.zones[m.selected]
 					m.detailsMode = false
 					m.templateMode = false
@@ -269,6 +279,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selected--
 					m.loading = true
 					m.err = nil
+					m.runtimeInvalid = false
 					m.pendingZone = m.zones[m.selected]
 					m.detailsMode = false
 					m.templateMode = false
@@ -353,6 +364,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "d":
+			if m.focus == focusZones {
+				if m.readOnly {
+					m.err = firewalld.ErrPermissionDenied
+					return m, nil
+				}
+				return m, m.startDeleteZone()
+			}
 			if m.focus == focusMain {
 				if m.readOnly {
 					m.err = firewalld.ErrPermissionDenied
@@ -361,6 +379,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.removeSelected()
 			}
 			return m, nil
+		case "D":
+			if m.focus != focusZones {
+				return m, nil
+			}
+			if m.readOnly {
+				m.err = firewalld.ErrPermissionDenied
+				return m, nil
+			}
+			if len(m.zones) == 0 || m.selected >= len(m.zones) {
+				return m, nil
+			}
+			zone := m.zones[m.selected]
+			m.err = nil
+			return m, setDefaultZoneCmd(m.client, zone)
 		}
 	case zonesMsg:
 		m.loading = false
@@ -374,7 +406,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = fmt.Errorf("no zones returned")
 			return m, nil
 		}
-		if m.selected >= len(m.zones) {
+		if m.pendingZone != "" {
+			if idx := indexOfZone(m.zones, m.pendingZone); idx >= 0 {
+				m.selected = idx
+			} else if m.selected >= len(m.zones) {
+				m.selected = 0
+			}
+		} else if m.selected >= len(m.zones) {
 			m.selected = 0
 		}
 		m.loading = true
@@ -387,13 +425,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detailsLoading = false
 		m.runtimeDenied = false
 		m.permanentDenied = false
+		m.runtimeInvalid = false
 		m.runtimeData = nil
 		m.permanentData = nil
 		m.editRichOld = ""
 		return m, tea.Batch(
 			fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
 			fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
+			fetchDefaultZoneCmd(m.client),
 		)
+	case defaultZoneMsg:
+		if msg.err != nil {
+			if errors.Is(msg.err, firewalld.ErrPermissionDenied) {
+				return m, nil
+			}
+			m.err = msg.err
+			return m, nil
+		}
+		m.defaultZone = msg.zone
+		return m, nil
 	case zoneSettingsMsg:
 		if msg.zoneName != "" && msg.zoneName != m.pendingZone {
 			return m, nil
@@ -412,6 +462,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if errors.Is(msg.err, firewalld.ErrInvalidZone) && !msg.permanent {
+				m.runtimeInvalid = true
+				m.runtimeDenied = false
+				m.runtimeData = nil
+				if msg.permanent == m.permanent {
+					m.loading = false
+				}
+				return m, nil
+			}
 			m.err = msg.err
 			return m, nil
 		}
@@ -422,6 +481,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.runtimeData = msg.zone
 			m.runtimeDenied = false
+			m.runtimeInvalid = false
 		}
 		if msg.permanent == m.permanent {
 			m.loading = false
@@ -444,6 +504,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detailsLoading = false
 		m.runtimeDenied = false
 		m.permanentDenied = false
+		m.runtimeInvalid = false
 		m.runtimeData = nil
 		m.permanentData = nil
 		m.editRichOld = ""
@@ -622,6 +683,38 @@ func (m *Model) startAddInput() tea.Cmd {
 	return nil
 }
 
+func (m *Model) startAddZone() tea.Cmd {
+	if m.readOnly {
+		m.err = firewalld.ErrPermissionDenied
+		return nil
+	}
+	m.err = nil
+	m.input.SetValue("")
+	m.input.Placeholder = "zone name"
+	m.inputMode = inputAddZone
+	m.input.CursorEnd()
+	m.input.Focus()
+	return nil
+}
+
+func (m *Model) startDeleteZone() tea.Cmd {
+	if m.readOnly {
+		m.err = firewalld.ErrPermissionDenied
+		return nil
+	}
+	if len(m.zones) == 0 || m.selected >= len(m.zones) {
+		m.err = fmt.Errorf("no zone selected")
+		return nil
+	}
+	m.err = nil
+	m.input.SetValue("")
+	m.input.Placeholder = "type zone name to delete"
+	m.inputMode = inputDeleteZone
+	m.input.CursorEnd()
+	m.input.Focus()
+	return nil
+}
+
 func (m *Model) startAddInterface() tea.Cmd {
 	if m.readOnly {
 		m.err = firewalld.ErrPermissionDenied
@@ -692,18 +785,57 @@ func (m *Model) submitInput() tea.Cmd {
 	if m.inputMode == inputNone {
 		return nil
 	}
-	if m.currentData() == nil || len(m.zones) == 0 {
-		m.err = fmt.Errorf("no zone selected")
-		return nil
-	}
-
-	zone := m.zones[m.selected]
 	value := strings.TrimSpace(m.input.Value())
 	if value == "" {
 		m.err = fmt.Errorf("input cannot be empty")
 		return nil
 	}
 
+	if m.inputMode == inputAddZone {
+		if !isValidZoneName(value) {
+			m.err = fmt.Errorf("invalid zone name (use letters, digits, _ or -)")
+			return nil
+		}
+		for _, z := range m.zones {
+			if z == value {
+				m.err = fmt.Errorf("zone already exists")
+				return nil
+			}
+		}
+		m.inputMode = inputNone
+		m.input.Blur()
+		m.loading = true
+		m.err = nil
+		m.runtimeInvalid = false
+		m.pendingZone = value
+		return addZoneCmd(m.client, value)
+	}
+
+	if m.inputMode == inputDeleteZone {
+		if len(m.zones) == 0 || m.selected >= len(m.zones) {
+			m.err = fmt.Errorf("no zone selected")
+			return nil
+		}
+		zone := m.zones[m.selected]
+		if value != zone {
+			m.err = fmt.Errorf("type zone name to confirm deletion")
+			return nil
+		}
+		m.inputMode = inputNone
+		m.input.Blur()
+		m.loading = true
+		m.err = nil
+		m.runtimeInvalid = false
+		m.pendingZone = ""
+		return removeZoneCmd(m.client, zone)
+	}
+
+	if m.currentData() == nil || len(m.zones) == 0 {
+		m.err = fmt.Errorf("no zone selected")
+		return nil
+	}
+
+	zone := m.zones[m.selected]
 	switch m.tab {
 	case tabServices:
 		m.inputMode = inputNone
@@ -1057,4 +1189,35 @@ func parsePortInput(value string) (firewalld.Port, error) {
 	}
 
 	return firewalld.Port{Port: portStr, Protocol: proto}, nil
+}
+
+func isValidZoneName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if r >= 'a' && r <= 'z' {
+			continue
+		}
+		if r >= 'A' && r <= 'Z' {
+			continue
+		}
+		if r >= '0' && r <= '9' {
+			continue
+		}
+		if r == '-' || r == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func indexOfZone(zones []string, zone string) int {
+	for i, z := range zones {
+		if z == zone {
+			return i
+		}
+	}
+	return -1
 }

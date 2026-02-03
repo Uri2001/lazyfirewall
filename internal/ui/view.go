@@ -67,12 +67,15 @@ func renderSidebar(m Model, width int) string {
 	for i, zone := range m.zones {
 		prefix := "  "
 		line := zone
+		if zone == m.defaultZone {
+			line = line + " [D]"
+		}
 		if i == m.selected {
 			prefix = "› "
 			if m.focus == focusZones {
-				line = selectedStyle.Render(zone)
+				line = selectedStyle.Render(line)
 			} else {
-				line = titleStyle.Render(zone)
+				line = titleStyle.Render(line)
 			}
 		}
 		b.WriteString(prefix + line + "\n")
@@ -123,6 +126,8 @@ func renderMain(m Model, width int) string {
 			b.WriteString(warnStyle.Render("No permission to read permanent config. Run with sudo."))
 		} else if !m.permanent && m.runtimeDenied {
 			b.WriteString(warnStyle.Render("No permission to read runtime settings. Run with sudo."))
+		} else if !m.permanent && m.runtimeInvalid {
+			b.WriteString(warnStyle.Render("Zone not present in runtime. Switch to Permanent or reload."))
 		} else {
 			b.WriteString(dimStyle.Render("No data loaded"))
 		}
@@ -858,8 +863,11 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  r           Refresh data\n\n")
 
 	b.WriteString("Actions:\n")
-	b.WriteString("  a           Add service/port\n")
-	b.WriteString("  d           Remove service/port\n")
+	b.WriteString("  n (zones)   New zone\n")
+	b.WriteString("  d (zones)   Delete zone\n")
+	b.WriteString("  D (zones)   Set default zone\n")
+	b.WriteString("  a (main)    Add service/port\n")
+	b.WriteString("  d (main)    Remove service/port\n")
 	b.WriteString("  e           Edit rich rule\n")
 	b.WriteString("  m           Toggle masquerade\n")
 	b.WriteString("  i           Add interface\n")
@@ -945,6 +953,10 @@ func renderInput(m Model) string {
 		label = "Add interface (" + mode + "): "
 	case inputAddSource:
 		label = "Add source (" + mode + "): "
+	case inputAddZone:
+		label = "Add zone: "
+	case inputDeleteZone:
+		label = "Delete zone (type name): "
 	case inputSearch:
 		label = "Search: "
 	}
@@ -967,6 +979,9 @@ func renderStatus(m Model) string {
 		searchHint = "  /: search  n/N: next"
 	}
 	actions := "a: add  d: delete  c: commit  u: revert"
+	if m.focus == focusZones {
+		actions = "n: new zone  d: delete zone  D: default"
+	}
 	templates := "  t: templates"
 	if m.readOnly {
 		actions = dimStyle.Render(actions)

@@ -37,6 +37,8 @@ const (
 	inputEditRich
 	inputAddInterface
 	inputAddSource
+	inputAddZone
+	inputDeleteZone
 	inputSearch
 )
 
@@ -65,6 +67,8 @@ type Model struct {
 	readOnly        bool
 	runtimeDenied   bool
 	permanentDenied bool
+	runtimeInvalid  bool
+	defaultZone     string
 	editRichOld     string
 
 	detailsMode    bool

@@ -26,6 +26,11 @@ type mutationMsg struct {
 	err  error
 }
 
+type defaultZoneMsg struct {
+	zone string
+	err  error
+}
+
 type serviceDetailsMsg struct {
 	service string
 	info    *firewalld.ServiceInfo
@@ -36,6 +41,13 @@ func fetchZonesCmd(client *firewalld.Client) tea.Cmd {
 	return func() tea.Msg {
 		zones, err := client.ListZones()
 		return zonesMsg{zones: zones, err: err}
+	}
+}
+
+func fetchDefaultZoneCmd(client *firewalld.Client) tea.Cmd {
+	return func() tea.Msg {
+		zone, err := client.GetDefaultZone()
+		return defaultZoneMsg{zone: zone, err: err}
 	}
 }
 
@@ -215,6 +227,39 @@ func reloadCmd(client *firewalld.Client, zone string) tea.Cmd {
 	return func() tea.Msg {
 		err := client.Reload()
 		return mutationMsg{zone: zone, err: err}
+	}
+}
+
+func addZoneCmd(client *firewalld.Client, zone string) tea.Cmd {
+	return func() tea.Msg {
+		if err := client.AddZonePermanent(zone); err != nil {
+			return zonesMsg{err: err}
+		}
+		zones, err := client.ListZones()
+		return zonesMsg{zones: zones, err: err}
+	}
+}
+
+func removeZoneCmd(client *firewalld.Client, zone string) tea.Cmd {
+	return func() tea.Msg {
+		if err := client.RemoveZonePermanent(zone); err != nil {
+			return zonesMsg{err: err}
+		}
+		zones, err := client.ListZones()
+		return zonesMsg{zones: zones, err: err}
+	}
+}
+
+func setDefaultZoneCmd(client *firewalld.Client, zone string) tea.Cmd {
+	return func() tea.Msg {
+		if err := client.SetDefaultZone(zone); err != nil {
+			return defaultZoneMsg{err: err}
+		}
+		current, err := client.GetDefaultZone()
+		if err != nil {
+			return defaultZoneMsg{err: err}
+		}
+		return defaultZoneMsg{zone: current, err: nil}
 	}
 }
 
