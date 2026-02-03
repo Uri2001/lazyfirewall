@@ -19,6 +19,20 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.helpMode {
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "esc", "?":
+				m.helpMode = false
+				return m, nil
+			case "ctrl+c", "q":
+				return m, tea.Quit
+			default:
+				return m, nil
+			}
+		}
+	}
+
 	if m.templateMode {
 		if key, ok := msg.(tea.KeyMsg); ok {
 			switch key.String() {
@@ -132,6 +146,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "S":
 			m.splitView = !m.splitView
+			return m, nil
+		case "?":
+			m.helpMode = !m.helpMode
+			if m.helpMode {
+				m.templateMode = false
+				m.detailsMode = false
+				m.inputMode = inputNone
+				m.input.Blur()
+			}
 			return m, nil
 		case "t":
 			m.templateMode = true

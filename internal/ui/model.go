@@ -51,6 +51,7 @@ type Model struct {
 	searchQuery   string
 	templateMode  bool
 	templateIndex int
+	helpMode      bool
 
 	detailsMode    bool
 	detailsLoading bool

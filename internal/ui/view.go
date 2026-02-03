@@ -106,6 +106,11 @@ func renderMain(m Model, width int) string {
 		b.WriteString("\n\n")
 	}
 
+	if m.helpMode {
+		renderHelp(&b, m)
+		return mainStyle.Width(width).Render(b.String())
+	}
+
 	current := m.currentData()
 	if current == nil {
 		b.WriteString(dimStyle.Render("No data loaded"))
@@ -797,6 +802,45 @@ func renderServiceDetails(b *strings.Builder, m Model) {
 	b.WriteString(dimStyle.Render("Press Enter or Esc to close"))
 }
 
+func renderHelp(b *strings.Builder, m Model) {
+	b.WriteString(titleStyle.Render("Help"))
+	b.WriteString("\n\n")
+
+	b.WriteString("Global:\n")
+	b.WriteString("  ?           Toggle help\n")
+	b.WriteString("  q / Ctrl+C  Quit\n\n")
+
+	b.WriteString("Navigation:\n")
+	b.WriteString("  Tab         Switch focus\n")
+	b.WriteString("  j/k         Move selection\n")
+	b.WriteString("  1-5         Switch tabs\n")
+	b.WriteString("  h/l         Prev/next tab\n\n")
+
+	b.WriteString("View:\n")
+	b.WriteString("  P           Toggle runtime/permanent\n")
+	b.WriteString("  S           Split diff view\n")
+	b.WriteString("  r           Refresh data\n\n")
+
+	b.WriteString("Actions:\n")
+	b.WriteString("  a           Add service/port\n")
+	b.WriteString("  d           Remove service/port\n")
+	b.WriteString("  c           Commit runtime → permanent\n")
+	b.WriteString("  u           Reload (revert runtime)\n")
+	b.WriteString("  t           Apply template\n")
+	b.WriteString("  Enter       Service details\n\n")
+
+	b.WriteString("Search:\n")
+	b.WriteString("  /           Search current tab\n")
+	b.WriteString("  n / N       Next/prev match\n\n")
+
+	b.WriteString("Indicators:\n")
+	b.WriteString("  *           Runtime-only item\n")
+	b.WriteString("  ~           Modified item\n")
+	b.WriteString("  + / -       Added/removed (split view)\n\n")
+
+	b.WriteString(dimStyle.Render("Press Esc or ? to close"))
+}
+
 func renderTemplates(b *strings.Builder, m Model) {
 	b.WriteString(titleStyle.Render("Apply Template"))
 	b.WriteString("\n\n")
@@ -874,7 +918,7 @@ func renderStatus(m Model) string {
 	if m.searchQuery != "" {
 		searchHint = "  /: search  n/N: next  t: templates"
 	}
-	status := fmt.Sprintf("Mode: %s | 1/2/3/4/5: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, searchHint)
+	status := fmt.Sprintf("Mode: %s | 1/2/3/4/5: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  ?: help  q: quit%s", mode, searchHint)
 	if legend != "" {
 		status = status + "\n" + legend
 	}
