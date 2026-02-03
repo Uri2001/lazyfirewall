@@ -80,6 +80,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "4":
 			m.tab = tabNetwork
 			return m, nil
+		case "5":
+			m.tab = tabInfo
+			return m, nil
 		case "h", "left":
 			m.prevTab()
 			return m, nil
@@ -311,6 +314,8 @@ func (m *Model) moveMainSelection(delta int) {
 		m.richIndex = next
 	case tabNetwork:
 		return
+	case tabInfo:
+		return
 	}
 }
 
@@ -347,7 +352,7 @@ func (m *Model) moveMatchSelection(forward bool) {
 
 func (m *Model) startAddInput() tea.Cmd {
 	m.err = nil
-	if m.tab == tabRich || m.tab == tabNetwork {
+	if m.tab == tabRich || m.tab == tabNetwork || m.tab == tabInfo {
 		m.err = fmt.Errorf("editing not implemented for this tab")
 		return nil
 	}
@@ -426,6 +431,9 @@ func (m *Model) removeSelected() tea.Cmd {
 	case tabNetwork:
 		m.err = fmt.Errorf("editing not implemented for this tab")
 		return nil
+	case tabInfo:
+		m.err = fmt.Errorf("editing not implemented for this tab")
+		return nil
 	default:
 		return nil
 	}
@@ -448,6 +456,9 @@ func (m *Model) currentIndex() int {
 	if m.tab == tabNetwork {
 		return 0
 	}
+	if m.tab == tabInfo {
+		return 0
+	}
 	return m.serviceIndex
 }
 
@@ -461,6 +472,9 @@ func (m *Model) setCurrentIndex(index int) {
 		return
 	}
 	if m.tab == tabNetwork {
+		return
+	}
+	if m.tab == tabInfo {
 		return
 	}
 	m.serviceIndex = index
@@ -482,6 +496,9 @@ func (m *Model) currentItems() []string {
 		return current.RichRules
 	}
 	if m.tab == tabNetwork {
+		return nil
+	}
+	if m.tab == tabInfo {
 		return nil
 	}
 	return current.Services
@@ -531,6 +548,8 @@ func (m *Model) nextTab() {
 	case tabRich:
 		m.tab = tabNetwork
 	case tabNetwork:
+		m.tab = tabInfo
+	case tabInfo:
 		m.tab = tabServices
 	}
 }
@@ -538,13 +557,15 @@ func (m *Model) nextTab() {
 func (m *Model) prevTab() {
 	switch m.tab {
 	case tabServices:
-		m.tab = tabNetwork
+		m.tab = tabInfo
 	case tabPorts:
 		m.tab = tabServices
 	case tabRich:
 		m.tab = tabPorts
 	case tabNetwork:
 		m.tab = tabRich
+	case tabInfo:
+		m.tab = tabNetwork
 	}
 }
 

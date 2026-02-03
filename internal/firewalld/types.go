@@ -11,13 +11,18 @@ type Port struct {
 }
 
 type Zone struct {
-	Name       string
-	Services   []string
-	Ports      []Port
-	RichRules  []string
-	Masquerade bool
-	Interfaces []string
-	Sources    []string
+	Name        string
+	Services    []string
+	Ports       []Port
+	RichRules   []string
+	Masquerade  bool
+	Interfaces  []string
+	Sources     []string
+	Target      string
+	IcmpBlocks  []string
+	IcmpInvert  bool
+	Short       string
+	Description string
 }
 
 var (

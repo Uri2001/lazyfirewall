@@ -127,6 +127,8 @@ func renderMain(m Model, width int) string {
 			renderRichRulesList(&b, m, current)
 		case tabNetwork:
 			renderNetworkView(&b, m, current)
+		case tabInfo:
+			renderInfoView(&b, m, current)
 		}
 	}
 
@@ -143,29 +145,40 @@ func renderTabs(m Model) string {
 	portLabel := " Ports "
 	richLabel := " Rich Rules "
 	networkLabel := " Network "
+	infoLabel := " Info "
 	switch m.tab {
 	case tabServices:
 		serviceLabel = tabActiveStyle.Render(serviceLabel)
 		portLabel = tabInactiveStyle.Render(portLabel)
 		richLabel = tabInactiveStyle.Render(richLabel)
 		networkLabel = tabInactiveStyle.Render(networkLabel)
+		infoLabel = tabInactiveStyle.Render(infoLabel)
 	case tabPorts:
 		serviceLabel = tabInactiveStyle.Render(serviceLabel)
 		portLabel = tabActiveStyle.Render(portLabel)
 		richLabel = tabInactiveStyle.Render(richLabel)
 		networkLabel = tabInactiveStyle.Render(networkLabel)
+		infoLabel = tabInactiveStyle.Render(infoLabel)
 	case tabRich:
 		serviceLabel = tabInactiveStyle.Render(serviceLabel)
 		portLabel = tabInactiveStyle.Render(portLabel)
 		richLabel = tabActiveStyle.Render(richLabel)
 		networkLabel = tabInactiveStyle.Render(networkLabel)
+		infoLabel = tabInactiveStyle.Render(infoLabel)
 	case tabNetwork:
 		serviceLabel = tabInactiveStyle.Render(serviceLabel)
 		portLabel = tabInactiveStyle.Render(portLabel)
 		richLabel = tabInactiveStyle.Render(richLabel)
 		networkLabel = tabActiveStyle.Render(networkLabel)
+		infoLabel = tabInactiveStyle.Render(infoLabel)
+	case tabInfo:
+		serviceLabel = tabInactiveStyle.Render(serviceLabel)
+		portLabel = tabInactiveStyle.Render(portLabel)
+		richLabel = tabInactiveStyle.Render(richLabel)
+		networkLabel = tabInactiveStyle.Render(networkLabel)
+		infoLabel = tabActiveStyle.Render(infoLabel)
 	}
-	return serviceLabel + " " + portLabel + " " + richLabel + " " + networkLabel
+	return serviceLabel + " " + portLabel + " " + richLabel + " " + networkLabel + " " + infoLabel
 }
 
 func renderSplitView(m Model, width int) string {
@@ -197,6 +210,8 @@ func splitLines(m Model) ([]string, []string) {
 		return diffRichRules(m.runtimeData, m.permanentData)
 	case tabNetwork:
 		return diffNetwork(m.runtimeData, m.permanentData)
+	case tabInfo:
+		return diffInfo(m.runtimeData, m.permanentData)
 	default:
 		return []string{""}, []string{""}
 	}
@@ -437,6 +452,120 @@ func diffNetwork(runtime, permanent *firewalld.Zone) ([]string, []string) {
 	return left, right
 }
 
+func diffInfo(runtime, permanent *firewalld.Zone) ([]string, []string) {
+	if runtime == nil || permanent == nil {
+		return []string{dimStyle.Render("(loading)")}, []string{dimStyle.Render("(loading)")}
+	}
+
+	left := make([]string, 0)
+	right := make([]string, 0)
+
+	left = append(left, "Target:")
+	right = append(right, "Target:")
+	rTarget := runtime.Target
+	pTarget := permanent.Target
+	if rTarget == "" {
+		rTarget = "(none)"
+	}
+	if pTarget == "" {
+		pTarget = "(none)"
+	}
+	if rTarget != pTarget {
+		left = append(left, "~ "+rTarget)
+		right = append(right, "~ "+pTarget)
+	} else {
+		left = append(left, "  "+rTarget)
+		right = append(right, "  "+pTarget)
+	}
+
+	left = append(left, "", "ICMP Blocks:")
+	right = append(right, "", "ICMP Blocks:")
+	permanentSet := make(map[string]struct{}, len(permanent.IcmpBlocks))
+	for _, r := range permanent.IcmpBlocks {
+		permanentSet[r] = struct{}{}
+	}
+	runtimeSet := make(map[string]struct{}, len(runtime.IcmpBlocks))
+	for _, r := range runtime.IcmpBlocks {
+		runtimeSet[r] = struct{}{}
+	}
+	for _, r := range runtime.IcmpBlocks {
+		prefix := "  "
+		if _, ok := permanentSet[r]; !ok {
+			prefix = "+ "
+		}
+		left = append(left, prefix+r)
+	}
+	for _, r := range permanent.IcmpBlocks {
+		prefix := "  "
+		if _, ok := runtimeSet[r]; !ok {
+			prefix = "- "
+		}
+		right = append(right, prefix+r)
+	}
+	if len(runtime.IcmpBlocks) == 0 {
+		left = append(left, dimStyle.Render("(none)"))
+	}
+	if len(permanent.IcmpBlocks) == 0 {
+		right = append(right, dimStyle.Render("(none)"))
+	}
+
+	left = append(left, "", "ICMP Inversion:")
+	right = append(right, "", "ICMP Inversion:")
+	rInv := "off"
+	if runtime.IcmpInvert {
+		rInv = "on"
+	}
+	pInv := "off"
+	if permanent.IcmpInvert {
+		pInv = "on"
+	}
+	if rInv != pInv {
+		left = append(left, "~ "+rInv)
+		right = append(right, "~ "+pInv)
+	} else {
+		left = append(left, "  "+rInv)
+		right = append(right, "  "+pInv)
+	}
+
+	left = append(left, "", "Short:")
+	right = append(right, "", "Short:")
+	rShort := runtime.Short
+	pShort := permanent.Short
+	if rShort == "" {
+		rShort = "(none)"
+	}
+	if pShort == "" {
+		pShort = "(none)"
+	}
+	if rShort != pShort {
+		left = append(left, "~ "+rShort)
+		right = append(right, "~ "+pShort)
+	} else {
+		left = append(left, "  "+rShort)
+		right = append(right, "  "+pShort)
+	}
+
+	left = append(left, "", "Description:")
+	right = append(right, "", "Description:")
+	rDesc := runtime.Description
+	pDesc := permanent.Description
+	if rDesc == "" {
+		rDesc = "(none)"
+	}
+	if pDesc == "" {
+		pDesc = "(none)"
+	}
+	if rDesc != pDesc {
+		left = append(left, "~ "+rDesc)
+		right = append(right, "~ "+pDesc)
+	} else {
+		left = append(left, "  "+rDesc)
+		right = append(right, "  "+pDesc)
+	}
+
+	return left, right
+}
+
 func renderServicesList(b *strings.Builder, m Model, current *firewalld.Zone) {
 	if len(current.Services) == 0 {
 		b.WriteString(dimStyle.Render("  (none)"))
@@ -561,6 +690,46 @@ func renderNetworkView(b *strings.Builder, m Model, current *firewalld.Zone) {
 	}
 }
 
+func renderInfoView(b *strings.Builder, m Model, current *firewalld.Zone) {
+	target := current.Target
+	if target == "" {
+		target = "(none)"
+	}
+	short := current.Short
+	if short == "" {
+		short = "(none)"
+	}
+	desc := current.Description
+	if desc == "" {
+		desc = "(none)"
+	}
+
+	b.WriteString("Target: " + highlightMatch(target, m.searchQuery) + "\n")
+	b.WriteString("ICMP Inversion: ")
+	if current.IcmpInvert {
+		b.WriteString("ON\n")
+	} else {
+		b.WriteString("OFF\n")
+	}
+
+	b.WriteString("\nICMP Blocks:\n")
+	if len(current.IcmpBlocks) == 0 {
+		b.WriteString(dimStyle.Render("  (none)"))
+		b.WriteString("\n")
+	} else {
+		for _, r := range current.IcmpBlocks {
+			line := highlightMatch(r, m.searchQuery)
+			b.WriteString("  - " + line + "\n")
+		}
+	}
+
+	b.WriteString("\nShort:\n")
+	b.WriteString("  " + highlightMatch(short, m.searchQuery) + "\n")
+
+	b.WriteString("\nDescription:\n")
+	b.WriteString("  " + highlightMatch(desc, m.searchQuery) + "\n")
+}
+
 func portDiffMark(p firewalld.Port, permanent *firewalld.Zone) string {
 	if permanent == nil {
 		return ""
@@ -612,7 +781,7 @@ func renderStatus(m Model) string {
 	if m.searchQuery != "" {
 		searchHint = "  /: search  n/N: next"
 	}
-	status := fmt.Sprintf("Mode: %s | 1/2/3/4: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, searchHint)
+	status := fmt.Sprintf("Mode: %s | 1/2/3/4/5: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  q: quit%s", mode, searchHint)
 	if legend != "" {
 		status = status + "\n" + legend
 	}

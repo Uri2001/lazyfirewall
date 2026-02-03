@@ -24,6 +24,7 @@ const (
 	tabPorts
 	tabRich
 	tabNetwork
+	tabInfo
 )
 
 type inputMode int

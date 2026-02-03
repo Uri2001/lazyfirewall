@@ -99,6 +99,42 @@ func parseZoneSettings(zone string, settings map[string]dbus.Variant) (*Zone, er
 		z.Sources = variantToStringSlice(v)
 	}
 
+	if v, ok := settings["target"]; ok {
+		if val, ok := v.Value().(string); ok {
+			z.Target = val
+		} else {
+			slog.Warn("unexpected target type", "type", fmt.Sprintf("%T", v.Value()))
+		}
+	}
+
+	if v, ok := settings["icmp_blocks"]; ok {
+		z.IcmpBlocks = variantToStringSlice(v)
+	}
+
+	if v, ok := settings["icmp_block_inversion"]; ok {
+		if val, ok := v.Value().(bool); ok {
+			z.IcmpInvert = val
+		} else {
+			slog.Warn("unexpected icmp_block_inversion type", "type", fmt.Sprintf("%T", v.Value()))
+		}
+	}
+
+	if v, ok := settings["short"]; ok {
+		if val, ok := v.Value().(string); ok {
+			z.Short = val
+		} else {
+			slog.Warn("unexpected short type", "type", fmt.Sprintf("%T", v.Value()))
+		}
+	}
+
+	if v, ok := settings["description"]; ok {
+		if val, ok := v.Value().(string); ok {
+			z.Description = val
+		} else {
+			slog.Warn("unexpected description type", "type", fmt.Sprintf("%T", v.Value()))
+		}
+	}
+
 	slog.Debug("zone parsed", "zone", zone, "services", len(z.Services), "ports", len(z.Ports))
 	return z, nil
 }
