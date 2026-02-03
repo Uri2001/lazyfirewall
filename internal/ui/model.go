@@ -52,6 +52,7 @@ type Model struct {
 	templateMode  bool
 	templateIndex int
 	helpMode      bool
+	readOnly      bool
 
 	detailsMode    bool
 	detailsLoading bool
@@ -90,5 +91,6 @@ func NewModel(client *firewalld.Client) Model {
 		input:     ti,
 		inputMode: inputNone,
 		permanent: false,
+		readOnly:  client.ReadOnly(),
 	}
 }

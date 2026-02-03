@@ -24,6 +24,7 @@ var (
 	statusStyle      = lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("250")).Padding(0, 1)
 	sidebarStyle     = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
 	mainStyle        = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
+	warnStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
 )
 
 func (m Model) View() string {
@@ -103,6 +104,11 @@ func renderMain(m Model, width int) string {
 
 	if m.err != nil {
 		b.WriteString(errorStyle.Render("Error: " + m.err.Error()))
+		b.WriteString("\n\n")
+	}
+
+	if m.readOnly {
+		b.WriteString(warnStyle.Render("🔒 Read-Only Mode - Run with sudo for editing"))
 		b.WriteString("\n\n")
 	}
 
@@ -914,11 +920,21 @@ func renderStatus(m Model) string {
 	} else if !m.permanent {
 		legend = "Legend: * runtime-only  ~ differs"
 	}
-	searchHint := "  /: search  t: templates"
+	searchHint := "  /: search"
 	if m.searchQuery != "" {
-		searchHint = "  /: search  n/N: next  t: templates"
+		searchHint = "  /: search  n/N: next"
 	}
-	status := fmt.Sprintf("Mode: %s | 1/2/3/4/5: tabs  S: split  a: add  d: delete  c: commit  u: revert  Tab: focus  j/k: move  P: toggle  r: refresh  ?: help  q: quit%s", mode, searchHint)
+	actions := "a: add  d: delete  c: commit  u: revert"
+	templates := "  t: templates"
+	if m.readOnly {
+		actions = dimStyle.Render(actions)
+		templates = "  " + dimStyle.Render("t: templates 🔒")
+	}
+	prefix := ""
+	if m.readOnly {
+		prefix = "🔒 Read-Only | "
+	}
+	status := fmt.Sprintf("%sMode: %s | 1/2/3/4/5: tabs  S: split  %s  Tab: focus  j/k: move  P: toggle  r: refresh  ?: help  q: quit%s%s", prefix, mode, actions, searchHint, templates)
 	if legend != "" {
 		status = status + "\n" + legend
 	}

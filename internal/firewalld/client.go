@@ -4,8 +4,10 @@
 package firewalld
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -21,6 +23,7 @@ type Client struct {
 	obj        dbus.BusObject
 	version    string
 	apiVersion APIVersion
+	readOnly   bool
 }
 
 func NewClient() (*Client, error) {
@@ -50,6 +53,11 @@ func NewClient() (*Client, error) {
 		slog.Warn("version detection failed", "error", err)
 	}
 
+	if err := client.detectPermissions(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
 	return client, nil
 }
 
@@ -66,6 +74,51 @@ func (c *Client) Version() string {
 
 func (c *Client) APIVersion() APIVersion {
 	return c.apiVersion
+}
+
+func (c *Client) ReadOnly() bool {
+	return c.readOnly
+}
+
+func (c *Client) detectPermissions() error {
+	slog.Debug("checking permissions")
+
+	method := dbusInterface + ".authorizeAll"
+	if err := c.call(method, nil); err != nil {
+		if isPermissionDenied(err) {
+			c.readOnly = true
+			slog.Warn("read-only mode enabled", "error", err)
+			return nil
+		}
+		return err
+	}
+
+	c.readOnly = false
+	return nil
+}
+
+func isPermissionDenied(err error) bool {
+	var dbusErr *dbus.Error
+	if errors.As(err, &dbusErr) {
+		switch dbusErr.Name {
+		case "org.freedesktop.DBus.Error.AccessDenied",
+			"org.fedoraproject.FirewallD1.AccessDenied",
+			"org.fedoraproject.FirewallD1.NotAuthorized",
+			"org.fedoraproject.FirewallD1.Error.AccessDenied",
+			"org.fedoraproject.FirewallD1.Error.NotAuthorized":
+			return true
+		}
+	}
+
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "accessdenied") ||
+		strings.Contains(msg, "permission denied") ||
+		strings.Contains(msg, "not authorized") ||
+		strings.Contains(msg, "notauthorized") {
+		return true
+	}
+
+	return false
 }
 
 func (c *Client) call(method string, out any, args ...any) error {

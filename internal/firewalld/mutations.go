@@ -9,6 +9,9 @@ func (c *Client) AddServicePermanent(zone, service string) error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
 	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
 
 	slog.Info("adding service (permanent)", "zone", zone, "service", service)
 	obj, err := c.getConfigZoneObject(zone)
@@ -24,6 +27,9 @@ func (c *Client) AddServiceRuntime(zone, service string) error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
 	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
 
 	slog.Info("adding service (runtime)", "zone", zone, "service", service)
 	method := dbusInterface + ".zone.addService"
@@ -33,6 +39,9 @@ func (c *Client) AddServiceRuntime(zone, service string) error {
 func (c *Client) RemoveServicePermanent(zone, service string) error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
 	}
 
 	slog.Info("removing service (permanent)", "zone", zone, "service", service)
@@ -49,6 +58,9 @@ func (c *Client) RemoveServiceRuntime(zone, service string) error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
 	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
 
 	slog.Info("removing service (runtime)", "zone", zone, "service", service)
 	method := dbusInterface + ".zone.removeService"
@@ -58,6 +70,9 @@ func (c *Client) RemoveServiceRuntime(zone, service string) error {
 func (c *Client) AddPortPermanent(zone string, port Port) error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
 	}
 
 	slog.Info("adding port (permanent)", "zone", zone, "port", port.Port, "protocol", port.Protocol)
@@ -74,6 +89,9 @@ func (c *Client) AddPortRuntime(zone string, port Port) error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
 	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
 
 	slog.Info("adding port (runtime)", "zone", zone, "port", port.Port, "protocol", port.Protocol)
 	method := dbusInterface + ".zone.addPort"
@@ -83,6 +101,9 @@ func (c *Client) AddPortRuntime(zone string, port Port) error {
 func (c *Client) RemovePortPermanent(zone string, port Port) error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
 	}
 
 	slog.Info("removing port (permanent)", "zone", zone, "port", port.Port, "protocol", port.Protocol)
@@ -99,6 +120,9 @@ func (c *Client) RemovePortRuntime(zone string, port Port) error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
 	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
 
 	slog.Info("removing port (runtime)", "zone", zone, "port", port.Port, "protocol", port.Protocol)
 	method := dbusInterface + ".zone.removePort"
@@ -109,6 +133,9 @@ func (c *Client) RuntimeToPermanent() error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
 	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
 
 	slog.Info("committing runtime to permanent")
 	method := dbusInterface + ".runtimeToPermanent"
@@ -118,6 +145,9 @@ func (c *Client) RuntimeToPermanent() error {
 func (c *Client) Reload() error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
 	}
 
 	slog.Info("reloading firewalld")

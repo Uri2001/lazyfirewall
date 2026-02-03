@@ -157,6 +157,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "t":
+			if m.readOnly {
+				m.err = firewalld.ErrPermissionDenied
+				return m, nil
+			}
 			m.templateMode = true
 			m.templateIndex = 0
 			return m, nil
@@ -187,6 +191,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = nil
 			return m, fetchZonesCmd(m.client)
 		case "c":
+			if m.readOnly {
+				m.err = firewalld.ErrPermissionDenied
+				return m, nil
+			}
 			if len(m.zones) == 0 {
 				return m, nil
 			}
@@ -195,6 +203,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pendingZone = m.zones[m.selected]
 			return m, commitRuntimeCmd(m.client, m.zones[m.selected])
 		case "u":
+			if m.readOnly {
+				m.err = firewalld.ErrPermissionDenied
+				return m, nil
+			}
 			if len(m.zones) == 0 {
 				return m, nil
 			}
@@ -277,11 +289,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "a":
 			if m.focus == focusMain {
+				if m.readOnly {
+					m.err = firewalld.ErrPermissionDenied
+					return m, nil
+				}
 				return m, m.startAddInput()
 			}
 			return m, nil
 		case "d":
 			if m.focus == focusMain {
+				if m.readOnly {
+					m.err = firewalld.ErrPermissionDenied
+					return m, nil
+				}
 				return m, m.removeSelected()
 			}
 			return m, nil
@@ -472,6 +492,10 @@ func (m *Model) moveMatchSelection(forward bool) {
 }
 
 func (m *Model) startAddInput() tea.Cmd {
+	if m.readOnly {
+		m.err = firewalld.ErrPermissionDenied
+		return nil
+	}
 	m.err = nil
 	if m.tab == tabRich || m.tab == tabNetwork || m.tab == tabInfo {
 		m.err = fmt.Errorf("editing not implemented for this tab")
@@ -527,6 +551,10 @@ func (m *Model) submitInput() tea.Cmd {
 }
 
 func (m *Model) removeSelected() tea.Cmd {
+	if m.readOnly {
+		m.err = firewalld.ErrPermissionDenied
+		return nil
+	}
 	current := m.currentData()
 	if current == nil || len(m.zones) == 0 {
 		return nil
@@ -637,6 +665,10 @@ func (m *Model) currentService() string {
 }
 
 func (m *Model) applyTemplate() tea.Cmd {
+	if m.readOnly {
+		m.err = firewalld.ErrPermissionDenied
+		return nil
+	}
 	if len(m.zones) == 0 {
 		m.err = fmt.Errorf("no zone selected")
 		return nil
