@@ -16,6 +16,8 @@ const (
 	dbusInterface  = "org.fedoraproject.FirewallD1"
 	dbusPath       = "/org/fedoraproject/FirewallD1"
 	dbusConfigPath = "/org/fedoraproject/FirewallD1/config"
+	dbusBusPath    = "/org/freedesktop/DBus"
+	dbusBusName    = "org.freedesktop.DBus"
 )
 
 type Client struct {
@@ -40,14 +42,29 @@ func NewClient() (*Client, error) {
 		obj:  obj,
 	}
 
-	var stateVar dbus.Variant
-	if err := client.call("org.freedesktop.DBus.Properties.Get", &stateVar, dbusInterface, "state"); err != nil {
+	busObj := conn.Object(dbusBusName, dbusBusPath)
+	var hasOwner bool
+	if err := busObj.Call("org.freedesktop.DBus.NameHasOwner", 0, dbusInterface).Store(&hasOwner); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("check firewalld owner: %w", err)
+	}
+	if !hasOwner {
 		conn.Close()
 		return nil, ErrNotRunning
 	}
 
-	state, _ := stateVar.Value().(string)
-	slog.Info("firewalld state", "state", state)
+	var stateVar dbus.Variant
+	if err := client.call("org.freedesktop.DBus.Properties.Get", &stateVar, dbusInterface, "state"); err != nil {
+		if isPermissionDenied(err) {
+			slog.Warn("state read denied", "error", err)
+		} else {
+			conn.Close()
+			return nil, fmt.Errorf("read firewalld state: %w", err)
+		}
+	} else {
+		state, _ := stateVar.Value().(string)
+		slog.Info("firewalld state", "state", state)
+	}
 
 	if err := client.detectVersion(); err != nil {
 		slog.Warn("version detection failed", "error", err)
