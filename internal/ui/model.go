@@ -69,6 +69,7 @@ type Model struct {
 	permanentDenied bool
 	runtimeInvalid  bool
 	defaultZone     string
+	activeZones     map[string][]string
 	editRichOld     string
 
 	detailsMode    bool

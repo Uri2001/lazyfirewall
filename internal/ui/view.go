@@ -21,6 +21,7 @@ var (
 	tabInactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Background(lipgloss.Color("237")).Padding(0, 1)
 	inputStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("229"))
 	matchStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
+	activeStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
 	statusStyle      = lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("250")).Padding(0, 1)
 	sidebarStyle     = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
 	mainStyle        = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
@@ -66,9 +67,19 @@ func renderSidebar(m Model, width int) string {
 
 	for i, zone := range m.zones {
 		prefix := "  "
-		line := zone
+		active := false
+		if m.activeZones != nil {
+			_, active = m.activeZones[zone]
+		}
+		name := zone
 		if zone == m.defaultZone {
-			line = line + " [D]"
+			name = name + " [D]"
+		}
+		line := name
+		if active {
+			line = activeStyle.Render("●") + " " + line
+		} else {
+			line = "  " + line
 		}
 		if i == m.selected {
 			prefix = "› "
@@ -882,6 +893,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  n / N       Next/prev match\n\n")
 
 	b.WriteString("Indicators:\n")
+	b.WriteString("  ●           Active zone\n")
 	b.WriteString("  *           Runtime-only item\n")
 	b.WriteString("  ~           Modified item\n")
 	b.WriteString("  + / -       Added/removed (split view)\n\n")

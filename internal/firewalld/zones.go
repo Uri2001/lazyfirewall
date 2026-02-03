@@ -118,3 +118,21 @@ func (c *Client) RemoveZonePermanent(zone string) error {
 	}
 	return nil
 }
+
+func (c *Client) GetActiveZones() (map[string][]string, error) {
+	if c.apiVersion != APIv2 {
+		return nil, ErrUnsupportedAPI
+	}
+
+	var zones map[string][]string
+	method := dbusInterface + ".zone.getActiveZones"
+	if err := c.call(method, &zones); err != nil {
+		if isPermissionDenied(err) {
+			return nil, ErrPermissionDenied
+		}
+		return nil, err
+	}
+
+	slog.Debug("active zones listed", "count", len(zones))
+	return zones, nil
+}

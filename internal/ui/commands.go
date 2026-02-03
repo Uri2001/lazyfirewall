@@ -14,6 +14,11 @@ type zonesMsg struct {
 	err   error
 }
 
+type activeZonesMsg struct {
+	zones map[string][]string
+	err   error
+}
+
 type zoneSettingsMsg struct {
 	zone      *firewalld.Zone
 	zoneName  string
@@ -41,6 +46,13 @@ func fetchZonesCmd(client *firewalld.Client) tea.Cmd {
 	return func() tea.Msg {
 		zones, err := client.ListZones()
 		return zonesMsg{zones: zones, err: err}
+	}
+}
+
+func fetchActiveZonesCmd(client *firewalld.Client) tea.Cmd {
+	return func() tea.Msg {
+		zones, err := client.GetActiveZones()
+		return activeZonesMsg{zones: zones, err: err}
 	}
 }
 

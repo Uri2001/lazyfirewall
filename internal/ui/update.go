@@ -17,7 +17,7 @@ import (
 )
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client))
+	return tea.Batch(m.spinner.Tick, fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client), fetchActiveZonesCmd(m.client))
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -207,7 +207,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.runtimeData = nil
 			m.permanentData = nil
 			m.editRichOld = ""
-			return m, tea.Batch(fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client))
+			return m, tea.Batch(fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client), fetchActiveZonesCmd(m.client))
 		case "c":
 			if m.readOnly {
 				m.err = firewalld.ErrPermissionDenied
@@ -433,7 +433,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
 			fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
 			fetchDefaultZoneCmd(m.client),
+			fetchActiveZonesCmd(m.client),
 		)
+	case activeZonesMsg:
+		if msg.err != nil {
+			if errors.Is(msg.err, firewalld.ErrPermissionDenied) || errors.Is(msg.err, firewalld.ErrUnsupportedAPI) {
+				return m, nil
+			}
+			m.err = msg.err
+			return m, nil
+		}
+		m.activeZones = msg.zones
+		return m, nil
 	case defaultZoneMsg:
 		if msg.err != nil {
 			if errors.Is(msg.err, firewalld.ErrPermissionDenied) {
@@ -511,6 +522,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(
 			fetchZoneSettingsCmd(m.client, msg.zone, false),
 			fetchZoneSettingsCmd(m.client, msg.zone, true),
+			fetchActiveZonesCmd(m.client),
 		)
 	case serviceDetailsMsg:
 		if msg.service != m.detailsName {
