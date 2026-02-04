@@ -65,9 +65,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.inputMode != inputNone {
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			switch msg.String() {
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
 			case "ctrl+c":
 				return m, tea.Quit
 			case "esc":
@@ -92,15 +91,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, m.submitInput()
 			}
-		}
 
-		var cmd tea.Cmd
-		m.input, cmd = m.input.Update(msg)
-		if m.inputMode == inputSearch {
-			m.searchQuery = m.input.Value()
-			m.applySearchSelection()
+			var cmd tea.Cmd
+			m.input, cmd = m.input.Update(key)
+			if m.inputMode == inputSearch {
+				m.searchQuery = m.input.Value()
+				m.applySearchSelection()
+			}
+			return m, cmd
 		}
-		return m, cmd
 	}
 
 	if m.detailsMode {
@@ -486,6 +485,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.panicCountdown > 0 {
 			return m, panicTickCmd()
 		}
+		m.err = nil
 		return m, nil
 	case panicAutoDisableMsg:
 		if !m.panicMode {
