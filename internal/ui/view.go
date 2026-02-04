@@ -75,18 +75,17 @@ func renderSidebar(m Model, width int) string {
 		if zone == m.defaultZone {
 			name = name + " [D]"
 		}
-		line := name
+		dot := "  "
 		if active {
-			line = activeStyle.Render("●") + " " + line
-		} else {
-			line = "  " + line
+			dot = activeStyle.Render("●") + " "
 		}
+		line := dot + name
 		if i == m.selected {
 			prefix = "› "
 			if m.focus == focusZones {
-				line = selectedStyle.Render(line)
+				line = dot + selectedStyle.Render(name)
 			} else {
-				line = titleStyle.Render(line)
+				line = dot + titleStyle.Render(name)
 			}
 		}
 		b.WriteString(prefix + line + "\n")

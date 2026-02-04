@@ -12,6 +12,11 @@ import (
 func Run(client *firewalld.Client) error {
 	model := NewModel(client)
 	program := tea.NewProgram(model, tea.WithAltScreen())
-	_, err := program.Run()
+	m, err := program.Run()
+	if finalModel, ok := m.(Model); ok {
+		if finalModel.signalsCancel != nil {
+			finalModel.signalsCancel()
+		}
+	}
 	return err
 }

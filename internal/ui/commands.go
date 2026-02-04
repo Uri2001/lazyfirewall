@@ -19,6 +19,18 @@ type activeZonesMsg struct {
 	err   error
 }
 
+type signalsReadyMsg struct {
+	ch     <-chan firewalld.SignalEvent
+	cancel func()
+	err    error
+}
+
+type signalsClosedMsg struct{}
+
+type firewalldSignalMsg struct {
+	event firewalld.SignalEvent
+}
+
 type zoneSettingsMsg struct {
 	zone      *firewalld.Zone
 	zoneName  string
@@ -53,6 +65,26 @@ func fetchActiveZonesCmd(client *firewalld.Client) tea.Cmd {
 	return func() tea.Msg {
 		zones, err := client.GetActiveZones()
 		return activeZonesMsg{zones: zones, err: err}
+	}
+}
+
+func subscribeSignalsCmd(client *firewalld.Client) tea.Cmd {
+	return func() tea.Msg {
+		ch, cancel, err := client.SubscribeSignals()
+		return signalsReadyMsg{ch: ch, cancel: cancel, err: err}
+	}
+}
+
+func listenSignalsCmd(ch <-chan firewalld.SignalEvent) tea.Cmd {
+	return func() tea.Msg {
+		if ch == nil {
+			return nil
+		}
+		ev, ok := <-ch
+		if !ok {
+			return signalsClosedMsg{}
+		}
+		return firewalldSignalMsg{event: ev}
 	}
 }
 

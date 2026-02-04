@@ -71,6 +71,8 @@ type Model struct {
 	defaultZone     string
 	activeZones     map[string][]string
 	editRichOld     string
+	signals        <-chan firewalld.SignalEvent
+	signalsCancel  func()
 
 	detailsMode    bool
 	detailsLoading bool

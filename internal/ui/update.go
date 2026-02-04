@@ -17,7 +17,13 @@ import (
 )
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client), fetchActiveZonesCmd(m.client))
+	return tea.Batch(
+		m.spinner.Tick,
+		fetchZonesCmd(m.client),
+		fetchDefaultZoneCmd(m.client),
+		fetchActiveZonesCmd(m.client),
+		subscribeSignalsCmd(m.client),
+	)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -445,6 +451,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.activeZones = msg.zones
 		return m, nil
+	case signalsReadyMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.signals = msg.ch
+		m.signalsCancel = msg.cancel
+		return m, listenSignalsCmd(m.signals)
+	case signalsClosedMsg:
+		m.signals = nil
+		m.signalsCancel = nil
+		return m, nil
+	case firewalldSignalMsg:
+		m.loading = true
+		m.err = nil
+		m.runtimeDenied = false
+		m.permanentDenied = false
+		m.runtimeInvalid = false
+		m.runtimeData = nil
+		m.permanentData = nil
+		return m, tea.Batch(
+			fetchZonesCmd(m.client),
+			fetchDefaultZoneCmd(m.client),
+			fetchActiveZonesCmd(m.client),
+			listenSignalsCmd(m.signals),
+		)
 	case defaultZoneMsg:
 		if msg.err != nil {
 			if errors.Is(msg.err, firewalld.ErrPermissionDenied) {
