@@ -4,6 +4,8 @@
 package ui
 
 import (
+	"time"
+
 	"lazyfirewall/internal/firewalld"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,6 +32,20 @@ type signalsClosedMsg struct{}
 type firewalldSignalMsg struct {
 	event firewalld.SignalEvent
 }
+
+type panicModeMsg struct {
+	enabled bool
+	err     error
+}
+
+type panicToggleMsg struct {
+	enabled bool
+	err     error
+}
+
+type panicTickMsg struct{}
+
+type panicAutoDisableMsg struct{}
 
 type zoneSettingsMsg struct {
 	zone      *firewalld.Zone
@@ -93,6 +109,39 @@ func fetchDefaultZoneCmd(client *firewalld.Client) tea.Cmd {
 		zone, err := client.GetDefaultZone()
 		return defaultZoneMsg{zone: zone, err: err}
 	}
+}
+
+func fetchPanicModeCmd(client *firewalld.Client) tea.Cmd {
+	return func() tea.Msg {
+		enabled, err := client.QueryPanicMode()
+		return panicModeMsg{enabled: enabled, err: err}
+	}
+}
+
+func enablePanicModeCmd(client *firewalld.Client) tea.Cmd {
+	return func() tea.Msg {
+		err := client.EnablePanicMode()
+		return panicToggleMsg{enabled: true, err: err}
+	}
+}
+
+func disablePanicModeCmd(client *firewalld.Client) tea.Cmd {
+	return func() tea.Msg {
+		err := client.DisablePanicMode()
+		return panicToggleMsg{enabled: false, err: err}
+	}
+}
+
+func panicTickCmd() tea.Cmd {
+	return tea.Tick(1*time.Second, func(time.Time) tea.Msg {
+		return panicTickMsg{}
+	})
+}
+
+func panicAutoDisableCmd(d time.Duration) tea.Cmd {
+	return tea.Tick(d, func(time.Time) tea.Msg {
+		return panicAutoDisableMsg{}
+	})
 }
 
 func fetchZoneSettingsCmd(client *firewalld.Client, zone string, permanent bool) tea.Cmd {

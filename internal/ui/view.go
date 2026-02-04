@@ -26,6 +26,7 @@ var (
 	sidebarStyle     = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
 	mainStyle        = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
 	warnStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
+	panicStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("1")).Padding(0, 1).Bold(true)
 )
 
 func (m Model) View() string {
@@ -124,6 +125,10 @@ func renderMain(m Model, width int) string {
 		b.WriteString(warnStyle.Render("🔒 Read-Only Mode - Run with sudo for editing"))
 		b.WriteString("\n\n")
 	}
+	if m.panicMode {
+		b.WriteString(panicStyle.Render("⚠ PANIC MODE ACTIVE - ALL CONNECTIONS DROPPED"))
+		b.WriteString("\n\n")
+	}
 
 	if m.helpMode {
 		renderHelp(&b, m)
@@ -171,6 +176,16 @@ func renderMain(m Model, width int) string {
 	}
 
 	if m.inputMode != inputNone {
+		if m.inputMode == inputPanicConfirm {
+			b.WriteString(warnStyle.Render("This will DROP ALL network connections immediately."))
+			b.WriteString("\n")
+			if m.panicCountdown > 0 {
+				b.WriteString(dimStyle.Render(fmt.Sprintf("Type YES and wait %ds, then press Enter.", m.panicCountdown)))
+			} else {
+				b.WriteString(dimStyle.Render("Type YES and press Enter to confirm."))
+			}
+			b.WriteString("\n")
+		}
 		b.WriteString("\n")
 		b.WriteString(renderInput(m))
 	}
@@ -885,6 +900,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  c           Commit runtime → permanent\n")
 	b.WriteString("  u           Reload (revert runtime)\n")
 	b.WriteString("  t           Apply template\n")
+	b.WriteString("  Alt+P       Panic mode (type YES)\n")
 	b.WriteString("  Enter       Service details\n\n")
 
 	b.WriteString("Search:\n")
@@ -968,6 +984,8 @@ func renderInput(m Model) string {
 		label = "Add zone: "
 	case inputDeleteZone:
 		label = "Delete zone (type name): "
+	case inputPanicConfirm:
+		label = "PANIC confirm: "
 	case inputSearch:
 		label = "Search: "
 	}
@@ -1001,6 +1019,9 @@ func renderStatus(m Model) string {
 	prefix := ""
 	if m.readOnly {
 		prefix = "🔒 Read-Only | "
+	}
+	if m.panicMode {
+		prefix = "🚨 PANIC | " + prefix
 	}
 	status := fmt.Sprintf("%sMode: %s | 1/2/3/4/5: tabs  S: split  %s  Tab: focus  j/k: move  P: toggle  r: refresh  ?: help  q: quit%s%s", prefix, mode, actions, searchHint, templates)
 	if legend != "" {

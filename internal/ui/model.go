@@ -4,6 +4,8 @@
 package ui
 
 import (
+	"time"
+
 	"lazyfirewall/internal/firewalld"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -39,6 +41,7 @@ const (
 	inputAddSource
 	inputAddZone
 	inputDeleteZone
+	inputPanicConfirm
 	inputSearch
 )
 
@@ -74,6 +77,10 @@ type Model struct {
 	signals        <-chan firewalld.SignalEvent
 	signalsCancel  func()
 	signalRefresh  bool
+	panicMode      bool
+	panicCountdown int
+	panicAutoDur   time.Duration
+	panicAutoArmed bool
 
 	detailsMode    bool
 	detailsLoading bool
@@ -113,6 +120,7 @@ func NewModel(client *firewalld.Client) Model {
 		inputMode: inputNone,
 		permanent: false,
 		readOnly:  client.ReadOnly(),
+		panicAutoDur: 10 * time.Minute,
 	}
 }
 

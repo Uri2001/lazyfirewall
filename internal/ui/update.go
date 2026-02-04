@@ -22,6 +22,7 @@ func (m Model) Init() tea.Cmd {
 		fetchZonesCmd(m.client),
 		fetchDefaultZoneCmd(m.client),
 		fetchActiveZonesCmd(m.client),
+		fetchPanicModeCmd(m.client),
 		subscribeSignalsCmd(m.client),
 	)
 }
@@ -76,6 +77,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if m.inputMode == inputEditRich {
 					m.editRichOld = ""
+				}
+				if m.inputMode == inputPanicConfirm {
+					m.panicCountdown = 0
 				}
 				m.inputMode = inputNone
 				m.input.Blur()
@@ -175,6 +179,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.templateMode = true
 			m.templateIndex = 0
 			return m, nil
+		case "alt+p", "alt+P":
+			if m.readOnly {
+				m.err = firewalld.ErrPermissionDenied
+				return m, nil
+			}
+			m.err = nil
+			if m.panicMode {
+				m.panicAutoArmed = false
+				return m, disablePanicModeCmd(m.client)
+			}
+			m.inputMode = inputPanicConfirm
+			m.input.SetValue("")
+			m.input.Placeholder = "type YES to confirm"
+			m.input.CursorEnd()
+			m.input.Focus()
+			m.panicCountdown = 5
+			return m, panicTickCmd()
 		case "/":
 			if m.splitView {
 				m.err = fmt.Errorf("search disabled in split view")
@@ -213,7 +234,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.runtimeData = nil
 			m.permanentData = nil
 			m.editRichOld = ""
-			return m, tea.Batch(fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client), fetchActiveZonesCmd(m.client))
+			return m, tea.Batch(fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client), fetchActiveZonesCmd(m.client), fetchPanicModeCmd(m.client))
 		case "c":
 			if m.readOnly {
 				m.err = firewalld.ErrPermissionDenied
@@ -414,6 +435,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.loading && m.signalRefresh {
 			return m, listenSignalsCmd(m.signals)
 		}
+		if strings.HasSuffix(msg.event.Name, ".PanicModeEnabled") {
+			m.panicMode = true
+		} else if strings.HasSuffix(msg.event.Name, ".PanicModeDisabled") {
+			m.panicMode = false
+			m.panicAutoArmed = false
+		}
 		m.loading = true
 		m.err = nil
 		m.signalRefresh = true
@@ -424,8 +451,50 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fetchZonesCmd(m.client),
 			fetchDefaultZoneCmd(m.client),
 			fetchActiveZonesCmd(m.client),
+			fetchPanicModeCmd(m.client),
 			listenSignalsCmd(m.signals),
 		)
+	case panicModeMsg:
+		if msg.err != nil {
+			if errors.Is(msg.err, firewalld.ErrPermissionDenied) || errors.Is(msg.err, firewalld.ErrUnsupportedAPI) {
+				return m, nil
+			}
+			m.err = msg.err
+			return m, nil
+		}
+		m.panicMode = msg.enabled
+		return m, nil
+	case panicToggleMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.panicMode = msg.enabled
+		if msg.enabled && m.panicAutoArmed {
+			m.panicAutoArmed = false
+			return m, panicAutoDisableCmd(m.panicAutoDur)
+		}
+		m.panicAutoArmed = false
+		return m, nil
+	case panicTickMsg:
+		if m.inputMode != inputPanicConfirm {
+			return m, nil
+		}
+		if m.panicCountdown > 0 {
+			m.panicCountdown--
+		}
+		if m.panicCountdown > 0 {
+			return m, panicTickCmd()
+		}
+		return m, nil
+	case panicAutoDisableMsg:
+		if !m.panicMode {
+			return m, nil
+		}
+		if m.readOnly {
+			return m, nil
+		}
+		return m, disablePanicModeCmd(m.client)
 	case defaultZoneMsg:
 		if msg.err != nil {
 			if errors.Is(msg.err, firewalld.ErrPermissionDenied) {
@@ -806,6 +875,22 @@ func (m *Model) submitInput() tea.Cmd {
 	if value == "" {
 		m.err = fmt.Errorf("input cannot be empty")
 		return nil
+	}
+
+	if m.inputMode == inputPanicConfirm {
+		if m.panicCountdown > 0 {
+			m.err = fmt.Errorf("wait %ds then press Enter", m.panicCountdown)
+			return nil
+		}
+		if !strings.EqualFold(value, "YES") {
+			m.err = fmt.Errorf("type YES to confirm")
+			return nil
+		}
+		m.inputMode = inputNone
+		m.input.Blur()
+		m.err = nil
+		m.panicAutoArmed = true
+		return enablePanicModeCmd(m.client)
 	}
 
 	if m.inputMode == inputAddZone {
