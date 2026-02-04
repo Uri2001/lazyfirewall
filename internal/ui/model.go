@@ -4,6 +4,8 @@
 package ui
 
 import (
+	"time"
+
 	"lazyfirewall/internal/firewalld"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -74,6 +76,9 @@ type Model struct {
 	signals        <-chan firewalld.SignalEvent
 	signalsCancel  func()
 	signalRefresh  bool
+	cache          map[string]*zoneCache
+	cacheTTL       time.Duration
+	cacheTick      time.Duration
 
 	detailsMode    bool
 	detailsLoading bool
@@ -92,6 +97,13 @@ type Model struct {
 	spinner   spinner.Model
 	input     textinput.Model
 	inputMode inputMode
+}
+
+type zoneCache struct {
+	runtime     *firewalld.Zone
+	runtimeAt   time.Time
+	permanent   *firewalld.Zone
+	permanentAt time.Time
 }
 
 func NewModel(client *firewalld.Client) Model {
@@ -113,6 +125,9 @@ func NewModel(client *firewalld.Client) Model {
 		inputMode: inputNone,
 		permanent: false,
 		readOnly:  client.ReadOnly(),
+		cache:     make(map[string]*zoneCache),
+		cacheTTL:  30 * time.Second,
+		cacheTick: 30 * time.Second,
 	}
 }
 

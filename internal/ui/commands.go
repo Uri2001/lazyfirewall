@@ -4,6 +4,8 @@
 package ui
 
 import (
+	"time"
+
 	"lazyfirewall/internal/firewalld"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,6 +32,8 @@ type signalsClosedMsg struct{}
 type firewalldSignalMsg struct {
 	event firewalld.SignalEvent
 }
+
+type cacheTickMsg struct{}
 
 type zoneSettingsMsg struct {
 	zone      *firewalld.Zone
@@ -86,6 +90,12 @@ func listenSignalsCmd(ch <-chan firewalld.SignalEvent) tea.Cmd {
 		}
 		return firewalldSignalMsg{event: ev}
 	}
+}
+
+func cacheTickCmd(interval time.Duration) tea.Cmd {
+	return tea.Tick(interval, func(time.Time) tea.Msg {
+		return cacheTickMsg{}
+	})
 }
 
 func fetchDefaultZoneCmd(client *firewalld.Client) tea.Cmd {

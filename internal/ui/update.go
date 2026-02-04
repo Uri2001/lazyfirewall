@@ -9,6 +9,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"lazyfirewall/internal/firewalld"
 
@@ -23,6 +24,7 @@ func (m Model) Init() tea.Cmd {
 		fetchDefaultZoneCmd(m.client),
 		fetchActiveZonesCmd(m.client),
 		subscribeSignalsCmd(m.client),
+		cacheTickCmd(m.cacheTick),
 	)
 }
 
@@ -213,6 +215,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.runtimeData = nil
 			m.permanentData = nil
 			m.editRichOld = ""
+			m.cacheInvalidateAll()
 			return m, tea.Batch(fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client), fetchActiveZonesCmd(m.client))
 		case "c":
 			if m.readOnly {
@@ -241,39 +244,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "P":
 			m.permanent = !m.permanent
 			if len(m.zones) > 0 && m.selected < len(m.zones) {
-				m.loading = true
 				m.err = nil
-				m.runtimeInvalid = false
-				m.pendingZone = m.zones[m.selected]
-				return m, tea.Batch(
-					fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
-					fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
-				)
+				return m, m.startZoneLoad(m.zones[m.selected], false)
 			}
 			return m, nil
 		case "j", "down":
 			if m.focus == focusZones {
 				if len(m.zones) > 0 && m.selected < len(m.zones)-1 {
 					m.selected++
-					m.loading = true
 					m.err = nil
-					m.runtimeInvalid = false
-					m.pendingZone = m.zones[m.selected]
-					m.detailsMode = false
-					m.templateMode = false
-					m.detailsName = ""
-					m.details = nil
-					m.detailsErr = nil
-					m.detailsLoading = false
-					m.runtimeDenied = false
-					m.permanentDenied = false
-					m.runtimeData = nil
-					m.permanentData = nil
-					m.editRichOld = ""
-					return m, tea.Batch(
-						fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
-						fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
-					)
+					return m, m.startZoneLoad(m.zones[m.selected], true)
 				}
 				return m, nil
 			}
@@ -283,25 +263,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focus == focusZones {
 				if len(m.zones) > 0 && m.selected > 0 {
 					m.selected--
-					m.loading = true
 					m.err = nil
-					m.runtimeInvalid = false
-					m.pendingZone = m.zones[m.selected]
-					m.detailsMode = false
-					m.templateMode = false
-					m.detailsName = ""
-					m.details = nil
-					m.detailsErr = nil
-					m.detailsLoading = false
-					m.runtimeDenied = false
-					m.permanentDenied = false
-					m.runtimeData = nil
-					m.permanentData = nil
-					m.editRichOld = ""
-					return m, tea.Batch(
-						fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
-						fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
-					)
+					return m, m.startZoneLoad(m.zones[m.selected], true)
 				}
 				return m, nil
 			}
@@ -421,29 +384,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.selected >= len(m.zones) {
 			m.selected = 0
 		}
-		m.loading = true
-		m.pendingZone = m.zones[m.selected]
-		if !m.signalRefresh {
-			m.detailsMode = false
-			m.templateMode = false
-			m.detailsName = ""
-			m.details = nil
-			m.detailsErr = nil
-			m.detailsLoading = false
-			m.runtimeDenied = false
-			m.permanentDenied = false
-			m.runtimeInvalid = false
-			m.runtimeData = nil
-			m.permanentData = nil
-			m.editRichOld = ""
-		}
+		cmd := m.startZoneLoad(m.zones[m.selected], !m.signalRefresh)
 		m.signalRefresh = false
-		return m, tea.Batch(
-			fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
-			fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
-			fetchDefaultZoneCmd(m.client),
-			fetchActiveZonesCmd(m.client),
-		)
+		cmds := []tea.Cmd{fetchDefaultZoneCmd(m.client), fetchActiveZonesCmd(m.client)}
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
 	case activeZonesMsg:
 		if msg.err != nil {
 			if errors.Is(msg.err, firewalld.ErrPermissionDenied) || errors.Is(msg.err, firewalld.ErrUnsupportedAPI) {
@@ -470,6 +417,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.loading && m.signalRefresh {
 			return m, listenSignalsCmd(m.signals)
 		}
+		if msg.event.Zone != "" {
+			m.cacheInvalidate(msg.event.Zone)
+		} else {
+			m.cacheInvalidateAll()
+		}
 		m.loading = true
 		m.err = nil
 		m.signalRefresh = true
@@ -482,6 +434,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fetchActiveZonesCmd(m.client),
 			listenSignalsCmd(m.signals),
 		)
+	case cacheTickMsg:
+		cmd := cacheTickCmd(m.cacheTick)
+		if m.loading {
+			return m, cmd
+		}
+		if len(m.zones) == 0 || m.selected >= len(m.zones) {
+			return m, cmd
+		}
+		zone := m.zones[m.selected]
+		cmds := []tea.Cmd{cmd}
+		runtimeStale := m.cacheStale(zone, false)
+		permanentStale := m.cacheStale(zone, true)
+		if runtimeStale {
+			cmds = append(cmds, fetchZoneSettingsCmd(m.client, zone, false))
+		}
+		if permanentStale {
+			cmds = append(cmds, fetchZoneSettingsCmd(m.client, zone, true))
+		}
+		if (!m.permanent && runtimeStale) || (m.permanent && permanentStale) {
+			m.loading = true
+		}
+		return m, tea.Batch(cmds...)
 	case defaultZoneMsg:
 		if msg.err != nil {
 			if errors.Is(msg.err, firewalld.ErrPermissionDenied) {
@@ -526,10 +500,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.permanent {
 			m.permanentData = msg.zone
 			m.permanentDenied = false
+			m.cacheSet(msg.zoneName, true, msg.zone)
 		} else {
 			m.runtimeData = msg.zone
 			m.runtimeDenied = false
 			m.runtimeInvalid = false
+			m.cacheSet(msg.zoneName, false, msg.zone)
 		}
 		if msg.permanent == m.permanent {
 			m.loading = false
@@ -541,6 +517,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err
 			return m, nil
 		}
+		m.cacheInvalidate(msg.zone)
 		m.loading = true
 		m.err = nil
 		m.pendingZone = msg.zone
@@ -602,6 +579,57 @@ func (m *Model) clampSelections() {
 	} else if m.networkIndex >= len(items) {
 		m.networkIndex = 0
 	}
+}
+
+func (m *Model) startZoneLoad(zone string, reset bool) tea.Cmd {
+	m.loading = true
+	m.pendingZone = zone
+	if reset {
+		m.detailsMode = false
+		m.templateMode = false
+		m.detailsName = ""
+		m.details = nil
+		m.detailsErr = nil
+		m.detailsLoading = false
+		m.runtimeDenied = false
+		m.permanentDenied = false
+		m.runtimeInvalid = false
+		m.editRichOld = ""
+	}
+
+	runtimeData, runtimeOk := m.cacheGet(zone, false)
+	permanentData, permanentOk := m.cacheGet(zone, true)
+
+	if runtimeOk {
+		m.runtimeData = runtimeData
+		m.runtimeDenied = false
+		m.runtimeInvalid = false
+	} else if reset {
+		m.runtimeData = nil
+	}
+	if permanentOk {
+		m.permanentData = permanentData
+		m.permanentDenied = false
+	} else if reset {
+		m.permanentData = nil
+	}
+
+	cmds := make([]tea.Cmd, 0, 2)
+	if !runtimeOk {
+		cmds = append(cmds, fetchZoneSettingsCmd(m.client, zone, false))
+	}
+	if !permanentOk {
+		cmds = append(cmds, fetchZoneSettingsCmd(m.client, zone, true))
+	}
+
+	if (m.permanent && permanentOk) || (!m.permanent && runtimeOk) {
+		m.loading = false
+	}
+
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m *Model) moveMainSelection(delta int) {
@@ -876,6 +904,7 @@ func (m *Model) submitInput() tea.Cmd {
 		m.err = nil
 		m.runtimeInvalid = false
 		m.pendingZone = ""
+		m.cacheInvalidate(zone)
 		return removeZoneCmd(m.client, zone)
 	}
 
@@ -1269,4 +1298,57 @@ func indexOfZone(zones []string, zone string) int {
 		}
 	}
 	return -1
+}
+
+func (m *Model) cacheGet(zone string, permanent bool) (*firewalld.Zone, bool) {
+	entry, ok := m.cache[zone]
+	if !ok {
+		return nil, false
+	}
+	now := time.Now()
+	if permanent {
+		if entry.permanent == nil || now.Sub(entry.permanentAt) > m.cacheTTL {
+			return nil, false
+		}
+		return entry.permanent, true
+	}
+	if entry.runtime == nil || now.Sub(entry.runtimeAt) > m.cacheTTL {
+		return nil, false
+	}
+	return entry.runtime, true
+}
+
+func (m *Model) cacheSet(zone string, permanent bool, data *firewalld.Zone) {
+	if zone == "" || data == nil {
+		return
+	}
+	entry, ok := m.cache[zone]
+	if !ok {
+		entry = &zoneCache{}
+		m.cache[zone] = entry
+	}
+	now := time.Now()
+	if permanent {
+		entry.permanent = data
+		entry.permanentAt = now
+	} else {
+		entry.runtime = data
+		entry.runtimeAt = now
+	}
+}
+
+func (m *Model) cacheStale(zone string, permanent bool) bool {
+	_, ok := m.cacheGet(zone, permanent)
+	return !ok
+}
+
+func (m *Model) cacheInvalidate(zone string) {
+	if zone == "" {
+		return
+	}
+	delete(m.cache, zone)
+}
+
+func (m *Model) cacheInvalidateAll() {
+	m.cache = make(map[string]*zoneCache)
 }
