@@ -423,18 +423,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.loading = true
 		m.pendingZone = m.zones[m.selected]
-		m.detailsMode = false
-		m.templateMode = false
-		m.detailsName = ""
-		m.details = nil
-		m.detailsErr = nil
-		m.detailsLoading = false
-		m.runtimeDenied = false
-		m.permanentDenied = false
-		m.runtimeInvalid = false
-		m.runtimeData = nil
-		m.permanentData = nil
-		m.editRichOld = ""
+		if !m.signalRefresh {
+			m.detailsMode = false
+			m.templateMode = false
+			m.detailsName = ""
+			m.details = nil
+			m.detailsErr = nil
+			m.detailsLoading = false
+			m.runtimeDenied = false
+			m.permanentDenied = false
+			m.runtimeInvalid = false
+			m.runtimeData = nil
+			m.permanentData = nil
+			m.editRichOld = ""
+		}
+		m.signalRefresh = false
 		return m, tea.Batch(
 			fetchZoneSettingsCmd(m.client, m.zones[m.selected], false),
 			fetchZoneSettingsCmd(m.client, m.zones[m.selected], true),
@@ -464,13 +467,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.signalsCancel = nil
 		return m, nil
 	case firewalldSignalMsg:
+		if m.loading && m.signalRefresh {
+			return m, listenSignalsCmd(m.signals)
+		}
 		m.loading = true
 		m.err = nil
-		m.runtimeDenied = false
-		m.permanentDenied = false
-		m.runtimeInvalid = false
-		m.runtimeData = nil
-		m.permanentData = nil
+		m.signalRefresh = true
+		if len(m.zones) > 0 && m.selected < len(m.zones) {
+			m.pendingZone = m.zones[m.selected]
+		}
 		return m, tea.Batch(
 			fetchZonesCmd(m.client),
 			fetchDefaultZoneCmd(m.client),

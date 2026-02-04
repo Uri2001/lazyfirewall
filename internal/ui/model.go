@@ -73,6 +73,7 @@ type Model struct {
 	editRichOld     string
 	signals        <-chan firewalld.SignalEvent
 	signalsCancel  func()
+	signalRefresh  bool
 
 	detailsMode    bool
 	detailsLoading bool
