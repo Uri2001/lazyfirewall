@@ -1744,6 +1744,10 @@ func (m *Model) submitInput() tea.Cmd {
 		case inputAddRich:
 			m.inputMode = inputNone
 			m.input.Blur()
+			if err := validateRichRule(value); err != nil {
+				m.err = err
+				return nil
+			}
 			if m.dryRun {
 				m.setDryRunNotice(fmt.Sprintf("add rich rule to zone %s (%s)", zone, modeLabel(m.permanent)))
 				return nil
@@ -1755,6 +1759,10 @@ func (m *Model) submitInput() tea.Cmd {
 			m.inputMode = inputNone
 			m.input.Blur()
 			if oldRule == value {
+				return nil
+			}
+			if err := validateRichRule(value); err != nil {
+				m.err = err
 				return nil
 			}
 			if m.dryRun {
@@ -2177,6 +2185,17 @@ func parseIPSetInput(value string) (string, string, error) {
 		ipsetType = fields[1]
 	}
 	return name, ipsetType, nil
+}
+
+func validateRichRule(value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fmt.Errorf("rich rule is empty")
+	}
+	if !strings.HasPrefix(trimmed, "rule") {
+		return fmt.Errorf("rich rule must start with 'rule'")
+	}
+	return nil
 }
 
 func isValidZoneName(name string) bool {
