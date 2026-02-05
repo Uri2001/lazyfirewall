@@ -241,7 +241,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input.CursorEnd()
 			m.input.Focus()
 			return m, nil
-		case "ctrl+i":
+		case "alt+i", "alt+I":
 			if m.readOnly {
 				m.err = firewalld.ErrPermissionDenied
 				return m, nil

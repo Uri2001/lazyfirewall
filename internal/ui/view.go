@@ -912,7 +912,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  Alt+P       Panic mode (type YES)\n")
 	b.WriteString("  Ctrl+R      Backup restore menu\n")
 	b.WriteString("  Ctrl+E      Export zone (JSON/XML)\n")
-	b.WriteString("  Ctrl+I      Import zone (JSON/XML)\n")
+	b.WriteString("  Alt+I       Import zone (JSON/XML)\n")
 	b.WriteString("  Enter       Service details\n\n")
 
 	b.WriteString("Search:\n")
