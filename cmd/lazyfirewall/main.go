@@ -11,15 +11,23 @@ import (
 	"lazyfirewall/internal/firewalld"
 	"lazyfirewall/internal/logger"
 	"lazyfirewall/internal/ui"
+	"lazyfirewall/internal/version"
 )
 
 func main() {
 	var dryRun bool
+	var showVersion bool
 	flag.BoolVar(&dryRun, "dry-run", false, "show changes without applying")
 	flag.BoolVar(&dryRun, "n", false, "alias for --dry-run")
+	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	flag.Parse()
 
 	logger.Init()
+
+	if showVersion {
+		fmt.Println(version.String())
+		return
+	}
 
 	client, err := firewalld.NewClient()
 	if err != nil {
