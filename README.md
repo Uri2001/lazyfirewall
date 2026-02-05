@@ -45,6 +45,9 @@ Disable colors:
 Default path: `~/.config/lazyfirewall/config.toml`  
 Override with: `LAZYFIREWALL_CONFIG=/path/to/config.toml`
 
+Note: when running with `sudo`, the default config path becomes `/root/.config/lazyfirewall/config.toml`.  
+Use `LAZYFIREWALL_CONFIG` if you want to keep a config in your user home.
+
 Example:
 ```toml
 [ui]

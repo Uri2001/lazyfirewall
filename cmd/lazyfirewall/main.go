@@ -6,6 +6,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"lazyfirewall/internal/config"
@@ -28,7 +29,7 @@ func main() {
 	flag.BoolVar(&noColor, "no-color", false, "disable color output")
 	flag.Parse()
 
-	cfg, warnings, _, err := config.Load()
+	cfg, warnings, configPath, configFound, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
@@ -41,6 +42,9 @@ func main() {
 	if err := logger.Init(logLevel); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
+	}
+	if configFound {
+		slog.Info("config loaded", "path", configPath)
 	}
 	for _, w := range warnings {
 		logger.WarnConfig(w)

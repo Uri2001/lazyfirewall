@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -53,23 +54,32 @@ func ResolvePath() (string, error) {
 	return filepath.Join(dir, "lazyfirewall", "config.toml"), nil
 }
 
-func Load() (Config, []string, bool, error) {
-	path, err := ResolvePath()
+func Load() (Config, []string, string, bool, error) {
+	paths, err := candidatePaths()
 	if err != nil {
-		return Default(), nil, false, err
+		return Default(), nil, "", false, err
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return Default(), nil, false, nil
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return Default(), nil, "", false, err
 		}
-		return Default(), nil, false, err
+		cfg := Default()
+		warnings, err := parse(string(data), &cfg)
+		if err != nil {
+			return Default(), nil, "", false, fmt.Errorf("parse %s: %w", path, err)
+		}
+		warnings = append(warnings, normalizeConfig(&cfg)...)
+		return cfg, warnings, path, true, nil
 	}
-	cfg := Default()
-	warnings, err := parse(string(data), &cfg)
-	if err != nil {
-		return Default(), nil, false, fmt.Errorf("parse %s: %w", path, err)
-	}
+	return Default(), nil, "", false, nil
+}
+
+func normalizeConfig(cfg *Config) []string {
+	warnings := make([]string, 0)
 	if cfg.UI.Theme != "" && cfg.UI.Theme != "default" {
 		warnings = append(warnings, fmt.Sprintf("ui.theme %q is not supported; using default", cfg.UI.Theme))
 		cfg.UI.Theme = "default"
@@ -77,7 +87,7 @@ func Load() (Config, []string, bool, error) {
 	if cfg.Behavior.AutoRefreshSeconds > 0 {
 		warnings = append(warnings, "behavior.auto_refresh_interval is currently disabled; set to 0")
 	}
-	return cfg, warnings, true, nil
+	return warnings
 }
 
 func parse(raw string, cfg *Config) ([]string, error) {
@@ -147,6 +157,41 @@ func parse(raw string, cfg *Config) ([]string, error) {
 		}
 	}
 	return warnings, nil
+}
+
+func candidatePaths() ([]string, error) {
+	if env := os.Getenv("LAZYFIREWALL_CONFIG"); env != "" {
+		return []string{env}, nil
+	}
+	primary, err := ResolvePath()
+	if err != nil {
+		return nil, err
+	}
+	paths := []string{primary}
+	if sudoPath, ok := sudoConfigPath(primary); ok {
+		paths = append(paths, sudoPath)
+	}
+	return paths, nil
+}
+
+func sudoConfigPath(primary string) (string, bool) {
+	sudoUser := os.Getenv("SUDO_USER")
+	if sudoUser == "" {
+		return "", false
+	}
+	current := os.Getenv("USER")
+	if current == sudoUser {
+		return "", false
+	}
+	u, err := user.Lookup(sudoUser)
+	if err != nil || u.HomeDir == "" {
+		return "", false
+	}
+	path := filepath.Join(u.HomeDir, ".config", "lazyfirewall", "config.toml")
+	if path == primary {
+		return "", false
+	}
+	return path, true
 }
 
 func stripComment(line string) string {
