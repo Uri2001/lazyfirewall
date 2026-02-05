@@ -1003,6 +1003,8 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  ?           Toggle help\n")
 	b.WriteString("  q / Ctrl+C  Quit\n\n")
 	b.WriteString("  --dry-run/-n  Start in dry-run mode\n\n")
+	b.WriteString("  --log-level   Set log level (debug|info|warn|error)\n")
+	b.WriteString("  --no-color    Disable color output\n\n")
 
 	b.WriteString("Navigation:\n")
 	b.WriteString("  Tab         Switch focus\n")

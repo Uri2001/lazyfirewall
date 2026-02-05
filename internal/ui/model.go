@@ -142,7 +142,8 @@ type Model struct {
 }
 
 type Options struct {
-	DryRun bool
+	DryRun  bool
+	NoColor bool
 }
 
 func NewModel(client *firewalld.Client, opts Options) Model {

@@ -1,18 +1,27 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 var logFile *os.File
 
-func Init() {
+func Init(levelOverride string) error {
 	level := slog.LevelInfo
 	if os.Getenv("LAZYFIREWALL_DEBUG") == "1" {
 		level = slog.LevelDebug
+	}
+	if levelOverride != "" {
+		parsed, err := ParseLevel(levelOverride)
+		if err != nil {
+			return err
+		}
+		level = parsed
 	}
 
 	writer := io.Writer(os.Stderr)
@@ -29,6 +38,24 @@ func Init() {
 		Level: level,
 	})
 	slog.SetDefault(slog.New(handler))
+	return nil
+}
+
+func ParseLevel(value string) (slog.Level, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn", "warning":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	case "":
+		return slog.LevelInfo, nil
+	default:
+		return slog.LevelInfo, fmt.Errorf("invalid log level: %q (use debug|info|warn|error)", value)
+	}
 }
 
 func resolveLogPath() string {

@@ -31,6 +31,16 @@ Version:
 ./lazyfirewall --version
 ```
 
+Log level:
+```bash
+./lazyfirewall --log-level debug
+```
+
+Disable colors:
+```bash
+./lazyfirewall --no-color
+```
+
 ## Highlights
 - Zones sidebar with active/default markers
 - Tabs: Services, Ports, Rich Rules, Network, IPSets, Info
