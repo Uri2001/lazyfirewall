@@ -33,9 +33,19 @@ type Zone struct {
 	Description string
 }
 
+type IPSet struct {
+	Name        string
+	Type        string
+	Short       string
+	Description string
+	Options     map[string]string
+	Entries     []string
+}
+
 var (
 	ErrNotRunning       = errors.New("firewalld service is not running")
 	ErrPermissionDenied = errors.New("permission denied (try sudo)")
 	ErrUnsupportedAPI   = errors.New("firewalld version not supported")
 	ErrInvalidZone      = errors.New("zone does not exist")
+	ErrInvalidIPSet     = errors.New("ipset does not exist")
 )

@@ -93,9 +93,27 @@ type zoneSettingsMsg struct {
 	err       error
 }
 
-type mutationMsg struct {
-	zone string
+type ipsetsMsg struct {
+	sets      []string
+	permanent bool
+	err       error
+}
+
+type ipsetEntriesMsg struct {
+	name      string
+	entries   []string
+	permanent bool
+	err       error
+}
+
+type ipsetMutationMsg struct {
+	name string
 	err  error
+}
+
+type mutationMsg struct {
+	zone      string
+	err       error
 	action    *undoAction
 	record    recordKind
 	clearRedo bool
@@ -312,6 +330,51 @@ func fetchZoneSettingsCmd(client *firewalld.Client, zone string, permanent bool)
 	return func() tea.Msg {
 		settings, err := client.GetZoneSettings(zone, permanent)
 		return zoneSettingsMsg{zone: settings, zoneName: zone, permanent: permanent, err: err}
+	}
+}
+
+func fetchIPSetsCmd(client *firewalld.Client, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		sets, err := client.ListIPSets(permanent)
+		return ipsetsMsg{sets: sets, permanent: permanent, err: err}
+	}
+}
+
+func fetchIPSetEntriesCmd(client *firewalld.Client, name string, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		entries, err := client.GetIPSetEntries(name, permanent)
+		return ipsetEntriesMsg{name: name, entries: entries, permanent: permanent, err: err}
+	}
+}
+
+func addIPSetCmd(client *firewalld.Client, name, ipsetType string) tea.Cmd {
+	return func() tea.Msg {
+		err := client.AddIPSetPermanent(name, ipsetType)
+		return ipsetMutationMsg{name: name, err: err}
+	}
+}
+
+func addIPSetEntryCmd(client *firewalld.Client, name, entry string, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if permanent {
+			err = client.AddIPSetEntryPermanent(name, entry)
+		} else {
+			err = client.AddIPSetEntryRuntime(name, entry)
+		}
+		return ipsetMutationMsg{name: name, err: err}
+	}
+}
+
+func removeIPSetEntryCmd(client *firewalld.Client, name, entry string, permanent bool) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if permanent {
+			err = client.RemoveIPSetEntryPermanent(name, entry)
+		} else {
+			err = client.RemoveIPSetEntryRuntime(name, entry)
+		}
+		return ipsetMutationMsg{name: name, err: err}
 	}
 }
 

@@ -28,6 +28,7 @@ func (m Model) Init() tea.Cmd {
 		fetchDefaultZoneCmd(m.client),
 		fetchActiveZonesCmd(m.client),
 		fetchPanicModeCmd(m.client),
+		fetchIPSetsCmd(m.client, m.permanent),
 		subscribeSignalsCmd(m.client),
 	)
 }
@@ -150,6 +151,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.inputMode == inputSearch {
 				m.searchQuery = m.input.Value()
 				m.applySearchSelection()
+				if m.tab == tabIPSets {
+					if entriesCmd := m.fetchCurrentIPSetEntries(); entriesCmd != nil {
+						return m, tea.Batch(cmd, entriesCmd)
+					}
+				}
 			}
 			return m, cmd
 		}
@@ -201,17 +207,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "5":
 			m.detailsMode = false
+			m.tab = tabIPSets
+			if m.focus == focusMain {
+				return m, m.fetchCurrentIPSetEntries()
+			}
+			return m, nil
+		case "6":
+			m.detailsMode = false
 			m.tab = tabInfo
 			return m, nil
 		case "h", "left":
 			m.detailsMode = false
 			m.prevTab()
+			if m.tab == tabIPSets {
+				return m, m.fetchCurrentIPSetEntries()
+			}
 			return m, nil
 		case "l", "right":
 			m.detailsMode = false
 			m.nextTab()
+			if m.tab == tabIPSets {
+				return m, m.fetchCurrentIPSetEntries()
+			}
 			return m, nil
 		case "S":
+			if m.tab == tabIPSets {
+				m.err = fmt.Errorf("split view not available for IPSets")
+				return m, nil
+			}
 			m.splitView = !m.splitView
 			return m, nil
 		case "?":
@@ -314,13 +337,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, m.startAddZone()
 			}
+			if m.focus == focusMain && m.tab == tabIPSets && m.searchQuery == "" {
+				return m, m.startAddIPSet()
+			}
 			if m.searchQuery != "" && !m.splitView && m.focus == focusMain {
 				m.moveMatchSelection(true)
+				if m.tab == tabIPSets {
+					return m, m.fetchCurrentIPSetEntries()
+				}
 			}
 			return m, nil
 		case "N":
 			if m.searchQuery != "" && !m.splitView && m.focus == focusMain {
 				m.moveMatchSelection(false)
+				if m.tab == tabIPSets {
+					return m, m.fetchCurrentIPSetEntries()
+				}
 			}
 			return m, nil
 		case "r":
@@ -333,7 +365,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.runtimeData = nil
 			m.permanentData = nil
 			m.editRichOld = ""
-			return m, tea.Batch(fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client), fetchActiveZonesCmd(m.client), fetchPanicModeCmd(m.client))
+			m.ipsetLoading = true
+			return m, tea.Batch(fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client), fetchActiveZonesCmd(m.client), fetchPanicModeCmd(m.client), fetchIPSetsCmd(m.client, m.permanent))
 		case "c":
 			if m.readOnly {
 				m.err = firewalld.ErrPermissionDenied
@@ -399,7 +432,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = nil
 				return m, m.startZoneLoad(m.zones[m.selected], false)
 			}
-			return m, nil
+			m.ipsetLoading = true
+			return m, fetchIPSetsCmd(m.client, m.permanent)
 		case "j", "down":
 			if m.focus == focusZones {
 				if len(m.zones) > 0 && m.selected < len(m.zones)-1 {
@@ -410,6 +444,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.moveMainSelection(1)
+			if m.tab == tabIPSets {
+				return m, m.fetchCurrentIPSetEntries()
+			}
 			return m, nil
 		case "k", "up":
 			if m.focus == focusZones {
@@ -421,6 +458,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.moveMainSelection(-1)
+			if m.tab == tabIPSets {
+				return m, m.fetchCurrentIPSetEntries()
+			}
 			return m, nil
 		case "enter":
 			if m.focus == focusMain && m.tab == tabServices {
@@ -759,18 +799,67 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		if msg.permanent {
-		m.permanentData = msg.zone
-		m.permanentDenied = false
-	} else {
-		m.runtimeData = msg.zone
-		m.runtimeDenied = false
-		m.runtimeInvalid = false
-	}
+			m.permanentData = msg.zone
+			m.permanentDenied = false
+		} else {
+			m.runtimeData = msg.zone
+			m.runtimeDenied = false
+			m.runtimeInvalid = false
+		}
 		if msg.permanent == m.permanent {
 			m.loading = false
 		}
 		m.clampSelections()
 		return m, nil
+	case ipsetsMsg:
+		if msg.permanent != m.permanent {
+			return m, nil
+		}
+		m.ipsetLoading = false
+		if msg.err != nil {
+			m.ipsetErr = msg.err
+			m.ipsetDenied = errors.Is(msg.err, firewalld.ErrPermissionDenied)
+			return m, nil
+		}
+		m.ipsetErr = nil
+		m.ipsetDenied = false
+		m.ipsets = msg.sets
+		if len(m.ipsets) == 0 {
+			m.ipsetIndex = 0
+			m.ipsetEntries = nil
+			m.ipsetEntryName = ""
+			m.ipsetEntriesErr = nil
+			m.ipsetEntriesLoading = false
+			return m, nil
+		}
+		if m.ipsetIndex < 0 || m.ipsetIndex >= len(m.ipsets) {
+			m.ipsetIndex = 0
+		}
+		return m, m.fetchCurrentIPSetEntries()
+	case ipsetEntriesMsg:
+		if msg.permanent != m.permanent {
+			return m, nil
+		}
+		if msg.name != m.ipsetEntryName {
+			return m, nil
+		}
+		m.ipsetEntriesLoading = false
+		if msg.err != nil {
+			m.ipsetEntriesErr = msg.err
+			return m, nil
+		}
+		m.ipsetEntriesErr = nil
+		m.ipsetEntries = msg.entries
+		return m, nil
+	case ipsetMutationMsg:
+		if msg.err != nil {
+			m.ipsetErr = msg.err
+			return m, nil
+		}
+		m.ipsetErr = nil
+		m.ipsetEntriesErr = nil
+		m.ipsetLoading = true
+		return m, fetchIPSetsCmd(m.client, m.permanent)
 	case mutationMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -846,11 +935,17 @@ func (m *Model) clampSelections() {
 	} else if m.networkIndex >= len(items) {
 		m.networkIndex = 0
 	}
+	if len(m.ipsets) == 0 {
+		m.ipsetIndex = 0
+	} else if m.ipsetIndex >= len(m.ipsets) {
+		m.ipsetIndex = 0
+	}
 }
 
 func (m *Model) startZoneLoad(zone string, reset bool) tea.Cmd {
 	m.loading = true
 	m.pendingZone = zone
+	m.ipsetLoading = true
 	if reset {
 		m.detailsMode = false
 		m.templateMode = false
@@ -869,6 +964,7 @@ func (m *Model) startZoneLoad(zone string, reset bool) tea.Cmd {
 	return tea.Batch(
 		fetchZoneSettingsCmd(m.client, zone, false),
 		fetchZoneSettingsCmd(m.client, zone, true),
+		fetchIPSetsCmd(m.client, m.permanent),
 	)
 }
 
@@ -1002,12 +1098,26 @@ func (m *Model) actionMasquerade(zone string, enabled, permanent bool) tea.Cmd {
 }
 
 func (m *Model) moveMainSelection(delta int) {
-	current := m.currentData()
-	if current == nil {
-		return
-	}
 	if m.searchQuery != "" {
 		m.moveMatchSelection(delta > 0)
+		return
+	}
+	if m.tab == tabIPSets {
+		if len(m.ipsets) == 0 {
+			return
+		}
+		next := m.ipsetIndex + delta
+		if next < 0 {
+			next = 0
+		}
+		if next >= len(m.ipsets) {
+			next = len(m.ipsets) - 1
+		}
+		m.ipsetIndex = next
+		return
+	}
+	current := m.currentData()
+	if current == nil {
 		return
 	}
 	switch m.tab {
@@ -1111,6 +1221,12 @@ func (m *Model) startAddInput() tea.Cmd {
 		}
 		return nil
 	}
+	if m.tab == tabIPSets {
+		if m.currentIPSetName() == "" {
+			m.err = fmt.Errorf("no ipset selected (press n to create)")
+			return nil
+		}
+	}
 	m.input.SetValue("")
 	m.editRichOld = ""
 	switch m.tab {
@@ -1123,6 +1239,9 @@ func (m *Model) startAddInput() tea.Cmd {
 	case tabRich:
 		m.input.Placeholder = "rich rule"
 		m.inputMode = inputAddRich
+	case tabIPSets:
+		m.input.Placeholder = "entry (IP/CIDR/etc)"
+		m.inputMode = inputAddIPSetEntry
 	}
 	m.input.CursorEnd()
 	m.input.Focus()
@@ -1138,6 +1257,42 @@ func (m *Model) startAddZone() tea.Cmd {
 	m.input.SetValue("")
 	m.input.Placeholder = "zone name"
 	m.inputMode = inputAddZone
+	m.input.CursorEnd()
+	m.input.Focus()
+	return nil
+}
+
+func (m *Model) startAddIPSet() tea.Cmd {
+	if m.readOnly {
+		m.err = firewalld.ErrPermissionDenied
+		return nil
+	}
+	if !m.permanent {
+		m.err = fmt.Errorf("ipset creation is permanent-only (press P)")
+		return nil
+	}
+	m.err = nil
+	m.input.SetValue("")
+	m.input.Placeholder = "ipset name [type]"
+	m.inputMode = inputAddIPSet
+	m.input.CursorEnd()
+	m.input.Focus()
+	return nil
+}
+
+func (m *Model) startRemoveIPSetEntry() tea.Cmd {
+	if m.readOnly {
+		m.err = firewalld.ErrPermissionDenied
+		return nil
+	}
+	if m.currentIPSetName() == "" {
+		m.err = fmt.Errorf("no ipset selected")
+		return nil
+	}
+	m.err = nil
+	m.input.SetValue("")
+	m.input.Placeholder = "entry to remove"
+	m.inputMode = inputRemoveIPSetEntry
 	m.input.CursorEnd()
 	m.input.Focus()
 	return nil
@@ -1318,6 +1473,60 @@ func (m *Model) submitInput() tea.Cmd {
 		return m.maybeBackup(zone, true, removeZoneCmd(m.client, zone))
 	}
 
+	if m.inputMode == inputAddIPSet {
+		name, ipsetType, err := parseIPSetInput(value)
+		if err != nil {
+			m.err = err
+			return nil
+		}
+		if !isValidZoneName(name) {
+			m.err = fmt.Errorf("invalid ipset name (use letters, digits, _ or -)")
+			return nil
+		}
+		m.inputMode = inputNone
+		m.input.Blur()
+		m.err = nil
+		m.notice = ""
+		m.ipsetLoading = true
+		return addIPSetCmd(m.client, name, ipsetType)
+	}
+
+	if m.inputMode == inputAddIPSetEntry {
+		name := m.currentIPSetName()
+		if name == "" {
+			m.err = fmt.Errorf("no ipset selected")
+			return nil
+		}
+		if strings.TrimSpace(value) == "" {
+			m.err = fmt.Errorf("entry cannot be empty")
+			return nil
+		}
+		m.inputMode = inputNone
+		m.input.Blur()
+		m.err = nil
+		m.notice = ""
+		m.ipsetLoading = true
+		return addIPSetEntryCmd(m.client, name, strings.TrimSpace(value), m.permanent)
+	}
+
+	if m.inputMode == inputRemoveIPSetEntry {
+		name := m.currentIPSetName()
+		if name == "" {
+			m.err = fmt.Errorf("no ipset selected")
+			return nil
+		}
+		if strings.TrimSpace(value) == "" {
+			m.err = fmt.Errorf("entry cannot be empty")
+			return nil
+		}
+		m.inputMode = inputNone
+		m.input.Blur()
+		m.err = nil
+		m.notice = ""
+		m.ipsetLoading = true
+		return removeIPSetEntryCmd(m.client, name, strings.TrimSpace(value), m.permanent)
+	}
+
 	if m.currentData() == nil || len(m.zones) == 0 {
 		m.err = fmt.Errorf("no zone selected")
 		return nil
@@ -1383,6 +1592,9 @@ func (m *Model) removeSelected() tea.Cmd {
 		m.err = firewalld.ErrPermissionDenied
 		return nil
 	}
+	if m.tab == tabIPSets {
+		return m.startRemoveIPSetEntry()
+	}
 	current := m.currentData()
 	if current == nil || len(m.zones) == 0 {
 		return nil
@@ -1440,6 +1652,30 @@ func (m *Model) currentData() *firewalld.Zone {
 	return m.runtimeData
 }
 
+func (m *Model) currentIPSetName() string {
+	if len(m.ipsets) == 0 {
+		return ""
+	}
+	if m.ipsetIndex < 0 || m.ipsetIndex >= len(m.ipsets) {
+		return ""
+	}
+	return m.ipsets[m.ipsetIndex]
+}
+
+func (m *Model) fetchCurrentIPSetEntries() tea.Cmd {
+	if m.tab != tabIPSets {
+		return nil
+	}
+	name := m.currentIPSetName()
+	if name == "" {
+		return nil
+	}
+	m.ipsetEntriesLoading = true
+	m.ipsetEntriesErr = nil
+	m.ipsetEntryName = name
+	return fetchIPSetEntriesCmd(m.client, name, m.permanent)
+}
+
 func (m *Model) currentIndex() int {
 	if m.tab == tabPorts {
 		return m.portIndex
@@ -1449,6 +1685,9 @@ func (m *Model) currentIndex() int {
 	}
 	if m.tab == tabNetwork {
 		return m.networkIndex
+	}
+	if m.tab == tabIPSets {
+		return m.ipsetIndex
 	}
 	if m.tab == tabInfo {
 		return 0
@@ -1469,6 +1708,10 @@ func (m *Model) setCurrentIndex(index int) {
 		m.networkIndex = index
 		return
 	}
+	if m.tab == tabIPSets {
+		m.ipsetIndex = index
+		return
+	}
 	if m.tab == tabInfo {
 		return
 	}
@@ -1476,6 +1719,9 @@ func (m *Model) setCurrentIndex(index int) {
 }
 
 func (m *Model) currentItems() []string {
+	if m.tab == tabIPSets {
+		return m.ipsets
+	}
 	current := m.currentData()
 	if current == nil {
 		return nil
@@ -1622,6 +1868,8 @@ func (m *Model) nextTab() {
 	case tabRich:
 		m.tab = tabNetwork
 	case tabNetwork:
+		m.tab = tabIPSets
+	case tabIPSets:
 		m.tab = tabInfo
 	case tabInfo:
 		m.tab = tabServices
@@ -1638,8 +1886,10 @@ func (m *Model) prevTab() {
 		m.tab = tabPorts
 	case tabNetwork:
 		m.tab = tabRich
-	case tabInfo:
+	case tabIPSets:
 		m.tab = tabNetwork
+	case tabInfo:
+		m.tab = tabIPSets
 	}
 }
 
@@ -1677,6 +1927,22 @@ func parsePortInput(value string) (firewalld.Port, error) {
 	}
 
 	return firewalld.Port{Port: portStr, Protocol: proto}, nil
+}
+
+func parseIPSetInput(value string) (string, string, error) {
+	fields := strings.Fields(strings.TrimSpace(value))
+	if len(fields) == 0 {
+		return "", "", fmt.Errorf("ipset name is empty")
+	}
+	if len(fields) > 2 {
+		return "", "", fmt.Errorf("use: name [type]")
+	}
+	name := fields[0]
+	ipsetType := "hash:ip"
+	if len(fields) == 2 {
+		ipsetType = fields[1]
+	}
+	return name, ipsetType, nil
 }
 
 func isValidZoneName(name string) bool {
@@ -1740,7 +2006,7 @@ func (m *Model) completePath() {
 	}
 
 	type cand struct {
-		name string
+		name  string
 		isDir bool
 	}
 	cands := make([]cand, 0)

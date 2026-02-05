@@ -161,7 +161,7 @@ func renderMain(m Model, width int) string {
 	b.WriteString("\n")
 	b.WriteString(renderTabs(m))
 	b.WriteString("\n\n")
-	if m.splitView {
+	if m.splitView && m.tab != tabIPSets {
 		b.WriteString(renderSplitView(m, width))
 	} else {
 		if m.templateMode {
@@ -178,6 +178,8 @@ func renderMain(m Model, width int) string {
 				renderRichRulesList(&b, m, current)
 			case tabNetwork:
 				renderNetworkView(&b, m, current)
+			case tabIPSets:
+				renderIPSetsView(&b, m)
 			case tabInfo:
 				renderInfoView(&b, m, current)
 			}
@@ -207,6 +209,7 @@ func renderTabs(m Model) string {
 	portLabel := " Ports "
 	richLabel := " Rich Rules "
 	networkLabel := " Network "
+	ipsetLabel := " IPSets "
 	infoLabel := " Info "
 	switch m.tab {
 	case tabServices:
@@ -214,33 +217,45 @@ func renderTabs(m Model) string {
 		portLabel = tabInactiveStyle.Render(portLabel)
 		richLabel = tabInactiveStyle.Render(richLabel)
 		networkLabel = tabInactiveStyle.Render(networkLabel)
+		ipsetLabel = tabInactiveStyle.Render(ipsetLabel)
 		infoLabel = tabInactiveStyle.Render(infoLabel)
 	case tabPorts:
 		serviceLabel = tabInactiveStyle.Render(serviceLabel)
 		portLabel = tabActiveStyle.Render(portLabel)
 		richLabel = tabInactiveStyle.Render(richLabel)
 		networkLabel = tabInactiveStyle.Render(networkLabel)
+		ipsetLabel = tabInactiveStyle.Render(ipsetLabel)
 		infoLabel = tabInactiveStyle.Render(infoLabel)
 	case tabRich:
 		serviceLabel = tabInactiveStyle.Render(serviceLabel)
 		portLabel = tabInactiveStyle.Render(portLabel)
 		richLabel = tabActiveStyle.Render(richLabel)
 		networkLabel = tabInactiveStyle.Render(networkLabel)
+		ipsetLabel = tabInactiveStyle.Render(ipsetLabel)
 		infoLabel = tabInactiveStyle.Render(infoLabel)
 	case tabNetwork:
 		serviceLabel = tabInactiveStyle.Render(serviceLabel)
 		portLabel = tabInactiveStyle.Render(portLabel)
 		richLabel = tabInactiveStyle.Render(richLabel)
 		networkLabel = tabActiveStyle.Render(networkLabel)
+		ipsetLabel = tabInactiveStyle.Render(ipsetLabel)
+		infoLabel = tabInactiveStyle.Render(infoLabel)
+	case tabIPSets:
+		serviceLabel = tabInactiveStyle.Render(serviceLabel)
+		portLabel = tabInactiveStyle.Render(portLabel)
+		richLabel = tabInactiveStyle.Render(richLabel)
+		networkLabel = tabInactiveStyle.Render(networkLabel)
+		ipsetLabel = tabActiveStyle.Render(ipsetLabel)
 		infoLabel = tabInactiveStyle.Render(infoLabel)
 	case tabInfo:
 		serviceLabel = tabInactiveStyle.Render(serviceLabel)
 		portLabel = tabInactiveStyle.Render(portLabel)
 		richLabel = tabInactiveStyle.Render(richLabel)
 		networkLabel = tabInactiveStyle.Render(networkLabel)
+		ipsetLabel = tabInactiveStyle.Render(ipsetLabel)
 		infoLabel = tabActiveStyle.Render(infoLabel)
 	}
-	return serviceLabel + " " + portLabel + " " + richLabel + " " + networkLabel + " " + infoLabel
+	return serviceLabel + " " + portLabel + " " + richLabel + " " + networkLabel + " " + ipsetLabel + " " + infoLabel
 }
 
 func renderSplitView(m Model, width int) string {
@@ -272,6 +287,8 @@ func splitLines(m Model) ([]string, []string) {
 		return diffRichRules(m.runtimeData, m.permanentData)
 	case tabNetwork:
 		return diffNetwork(m.runtimeData, m.permanentData)
+	case tabIPSets:
+		return []string{dimStyle.Render("(split view not available)")}, []string{dimStyle.Render("(split view not available)")}
 	case tabInfo:
 		return diffInfo(m.runtimeData, m.permanentData)
 	default:
@@ -776,6 +793,78 @@ func renderNetworkView(b *strings.Builder, m Model, current *firewalld.Zone) {
 	b.WriteString(dimStyle.Render("i: add interface  s: add source  d: remove selected"))
 }
 
+func renderIPSetsView(b *strings.Builder, m Model) {
+	if m.ipsetDenied {
+		b.WriteString(warnStyle.Render("No permission to read IPSets. Run with sudo."))
+		return
+	}
+	if m.ipsetLoading {
+		b.WriteString(dimStyle.Render("Loading IPSets..."))
+		return
+	}
+	if m.ipsetErr != nil {
+		b.WriteString(warnStyle.Render(fmt.Sprintf("Error: %v", m.ipsetErr)))
+		b.WriteString("\n\n")
+	}
+	if len(m.ipsets) == 0 {
+		b.WriteString(dimStyle.Render("  (none)"))
+		return
+	}
+
+	attached := attachedIPSets(m.currentData())
+	b.WriteString("IPSets:\n")
+	for i, name := range m.ipsets {
+		prefix := "  "
+		line := highlightMatch(name, m.searchQuery)
+		if _, ok := attached[name]; ok {
+			line = line + dimStyle.Render(" [Z]")
+		}
+		if i == m.ipsetIndex {
+			prefix = "› "
+			if m.focus == focusMain {
+				line = selectedStyle.Render(line)
+			} else {
+				line = titleStyle.Render(line)
+			}
+		}
+		b.WriteString(prefix + line + "\n")
+	}
+
+	b.WriteString("\nEntries")
+	if m.ipsetEntryName != "" {
+		b.WriteString(" (" + m.ipsetEntryName + ")")
+	}
+	b.WriteString(":\n")
+	if m.ipsetEntriesLoading {
+		b.WriteString(dimStyle.Render("  (loading)"))
+		return
+	}
+	if m.ipsetEntriesErr != nil {
+		b.WriteString(warnStyle.Render(fmt.Sprintf("  Error: %v", m.ipsetEntriesErr)))
+		return
+	}
+	if len(m.ipsetEntries) == 0 {
+		b.WriteString(dimStyle.Render("  (none)"))
+		return
+	}
+	for _, entry := range m.ipsetEntries {
+		b.WriteString("  - " + entry + "\n")
+	}
+}
+
+func attachedIPSets(zone *firewalld.Zone) map[string]struct{} {
+	if zone == nil {
+		return nil
+	}
+	out := make(map[string]struct{})
+	for _, src := range zone.Sources {
+		if strings.HasPrefix(src, "ipset:") {
+			out[strings.TrimPrefix(src, "ipset:")] = struct{}{}
+		}
+	}
+	return out
+}
+
 func renderInfoView(b *strings.Builder, m Model, current *firewalld.Zone) {
 	target := current.Target
 	if target == "" {
@@ -888,7 +977,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("Navigation:\n")
 	b.WriteString("  Tab         Switch focus\n")
 	b.WriteString("  j/k         Move selection\n")
-	b.WriteString("  1-5         Switch tabs\n")
+	b.WriteString("  1-6         Switch tabs\n")
 	b.WriteString("  h/l         Prev/next tab\n\n")
 
 	b.WriteString("View:\n")
@@ -916,6 +1005,9 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  Ctrl+Z/Y    Undo / Redo\n")
 	b.WriteString("  Tab         Path autocomplete (export/import)\n")
 	b.WriteString("  Enter       Service details\n\n")
+	b.WriteString("  n (ipsets)  New IPSet (permanent)\n")
+	b.WriteString("  a (ipsets)  Add entry\n")
+	b.WriteString("  d (ipsets)  Remove entry\n\n")
 
 	b.WriteString("Search:\n")
 	b.WriteString("  /           Search current tab\n")
@@ -926,6 +1018,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  *           Runtime-only item\n")
 	b.WriteString("  ~           Modified item\n")
 	b.WriteString("  + / -       Added/removed (split view)\n\n")
+	b.WriteString("  [Z]         IPSet attached to zone\n\n")
 
 	b.WriteString(dimStyle.Render("Press Esc or ? to close"))
 }
@@ -1075,6 +1168,12 @@ func renderInput(m Model) string {
 		label = "Import path: "
 	case inputSearch:
 		label = "Search: "
+	case inputAddIPSet:
+		label = "Add IPSet: "
+	case inputAddIPSetEntry:
+		label = "Add IPSet entry (" + mode + "): "
+	case inputRemoveIPSetEntry:
+		label = "Remove IPSet entry (" + mode + "): "
 	}
 	return inputStyle.Render(label) + m.input.View()
 }
@@ -1085,10 +1184,12 @@ func renderStatus(m Model) string {
 		mode = "Permanent"
 	}
 	legend := ""
-	if m.splitView {
-		legend = "Legend: + added  - removed  ~ modified"
-	} else if !m.permanent {
-		legend = "Legend: * runtime-only  ~ differs"
+	if m.tab != tabIPSets {
+		if m.splitView {
+			legend = "Legend: + added  - removed  ~ modified"
+		} else if !m.permanent {
+			legend = "Legend: * runtime-only  ~ differs"
+		}
 	}
 	searchHint := "  /: search"
 	if m.searchQuery != "" {
@@ -1097,6 +1198,8 @@ func renderStatus(m Model) string {
 	actions := "a: add  d: delete  c: commit  u: revert"
 	if m.focus == focusZones {
 		actions = "n: new zone  d: delete zone  D: default"
+	} else if m.tab == tabIPSets {
+		actions = "n: new ipset  a: add entry  d: remove entry"
 	}
 	templates := "  t: templates"
 	if m.readOnly {
@@ -1110,7 +1213,7 @@ func renderStatus(m Model) string {
 	if m.panicMode {
 		prefix = "🚨 PANIC | " + prefix
 	}
-	status := fmt.Sprintf("%sMode: %s | 1/2/3/4/5: tabs  S: split  %s  Tab: focus  j/k: move  P: toggle  r: refresh  ?: help  q: quit%s%s", prefix, mode, actions, searchHint, templates)
+	status := fmt.Sprintf("%sMode: %s | 1/2/3/4/5/6: tabs  S: split  %s  Tab: focus  j/k: move  P: toggle  r: refresh  ?: help  q: quit%s%s", prefix, mode, actions, searchHint, templates)
 	if legend != "" {
 		status = status + "\n" + legend
 	}
