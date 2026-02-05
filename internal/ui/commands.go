@@ -136,6 +136,11 @@ type serviceDetailsMsg struct {
 	err     error
 }
 
+type serviceCatalogMsg struct {
+	services []string
+	err      error
+}
+
 type recordKind int
 
 const (
@@ -567,6 +572,13 @@ func fetchServiceDetailsCmd(client *firewalld.Client, service string) tea.Cmd {
 	return func() tea.Msg {
 		info, err := client.GetServiceDetails(service)
 		return serviceDetailsMsg{service: service, info: info, err: err}
+	}
+}
+
+func fetchServiceCatalogCmd(client *firewalld.Client) tea.Cmd {
+	return func() tea.Msg {
+		services, err := client.ListServiceNames()
+		return serviceCatalogMsg{services: services, err: err}
 	}
 }
 

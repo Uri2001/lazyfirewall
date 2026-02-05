@@ -111,6 +111,9 @@ type Model struct {
 	ipsetErr            error
 	ipsetEntriesErr     error
 	ipsetDenied         bool
+	availableServices   []string
+	servicesLoading     bool
+	servicesErr         error
 
 	detailsMode    bool
 	detailsLoading bool
@@ -145,19 +148,20 @@ func NewModel(client *firewalld.Client, opts Options) Model {
 	ti.Prompt = ""
 
 	return Model{
-		client:       client,
-		focus:        focusZones,
-		tab:          tabServices,
-		loading:      true,
-		spinner:      sp,
-		input:        ti,
-		inputMode:    inputNone,
-		permanent:    false,
-		readOnly:     client.ReadOnly(),
-		dryRun:       opts.DryRun,
-		panicAutoDur: 10 * time.Minute,
-		backupDone:   make(map[string]bool),
-		ipsetLoading: true,
+		client:          client,
+		focus:           focusZones,
+		tab:             tabServices,
+		loading:         true,
+		spinner:         sp,
+		input:           ti,
+		inputMode:       inputNone,
+		permanent:       false,
+		readOnly:        client.ReadOnly(),
+		dryRun:          opts.DryRun,
+		panicAutoDur:    10 * time.Minute,
+		backupDone:      make(map[string]bool),
+		ipsetLoading:    true,
+		servicesLoading: true,
 	}
 }
 

@@ -1005,7 +1005,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  Ctrl+E      Export zone (JSON/XML)\n")
 	b.WriteString("  Alt+I       Import zone (JSON/XML)\n")
 	b.WriteString("  Ctrl+Z/Y    Undo / Redo\n")
-	b.WriteString("  Tab         Path autocomplete (export/import)\n")
+	b.WriteString("  Tab         Autocomplete (export/import/service)\n")
 	b.WriteString("  Enter       Service details\n\n")
 	b.WriteString("  n (ipsets)  New IPSet (permanent)\n")
 	b.WriteString("  a (ipsets)  Add entry\n")

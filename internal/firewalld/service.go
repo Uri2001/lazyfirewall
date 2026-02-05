@@ -11,7 +11,10 @@ import (
 	"path/filepath"
 )
 
-const serviceDir = "/usr/lib/firewalld/services"
+var serviceDirs = []string{
+	"/etc/firewalld/services",
+	"/usr/lib/firewalld/services",
+}
 
 type serviceXML struct {
 	XMLName     xml.Name        `xml:"service"`
@@ -34,10 +37,21 @@ func (c *Client) GetServiceDetails(name string) (*ServiceInfo, error) {
 	if name == "" {
 		return nil, fmt.Errorf("service name is empty")
 	}
-	path := filepath.Join(serviceDir, name+".xml")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read service %s: %w", name, err)
+	var data []byte
+	var lastErr error
+	for _, dir := range serviceDirs {
+		path := filepath.Join(dir, name+".xml")
+		b, err := os.ReadFile(path)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		data = b
+		lastErr = nil
+		break
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("read service %s: %w", name, lastErr)
 	}
 
 	var svc serviceXML
@@ -61,4 +75,36 @@ func (c *Client) GetServiceDetails(name string) (*ServiceInfo, error) {
 
 	slog.Debug("service details loaded", "service", name, "ports", len(info.Ports))
 	return info, nil
+}
+
+func (c *Client) ListServiceNames() ([]string, error) {
+	seen := make(map[string]struct{})
+	for _, dir := range serviceDirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("read services dir %s: %w", dir, err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			if !strings.HasSuffix(name, ".xml") {
+				continue
+			}
+			base := strings.TrimSuffix(name, ".xml")
+			if base != "" {
+				seen[base] = struct{}{}
+			}
+		}
+	}
+	services := make([]string, 0, len(seen))
+	for name := range seen {
+		services = append(services, name)
+	}
+	sort.Strings(services)
+	return services, nil
 }

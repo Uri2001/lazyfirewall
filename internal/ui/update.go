@@ -29,6 +29,7 @@ func (m Model) Init() tea.Cmd {
 		fetchActiveZonesCmd(m.client),
 		fetchPanicModeCmd(m.client),
 		fetchIPSetsCmd(m.client, m.permanent),
+		fetchServiceCatalogCmd(m.client),
 		subscribeSignalsCmd(m.client),
 	)
 }
@@ -117,9 +118,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.inputMode != inputNone {
 		if key, ok := msg.(tea.KeyMsg); ok {
-			if key.String() == "tab" && (m.inputMode == inputExportZone || m.inputMode == inputImportZone) {
-				m.completePath()
-				return m, nil
+			if key.String() == "tab" {
+				switch m.inputMode {
+				case inputExportZone, inputImportZone:
+					m.completePath()
+					return m, nil
+				case inputAddService:
+					m.completeServiceName()
+					return m, nil
+				}
 			}
 			switch key.String() {
 			case "ctrl+c":
@@ -949,6 +956,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detailsErr = nil
 		m.details = msg.info
 		return m, nil
+	case serviceCatalogMsg:
+		m.servicesLoading = false
+		if msg.err != nil {
+			m.servicesErr = msg.err
+			return m, nil
+		}
+		m.servicesErr = nil
+		m.availableServices = msg.services
+		return m, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -1700,6 +1716,10 @@ func (m *Model) submitInput() tea.Cmd {
 	case tabServices:
 		m.inputMode = inputNone
 		m.input.Blur()
+		if !m.servicesLoading && m.servicesErr == nil && len(m.availableServices) > 0 && !m.serviceExists(value) {
+			m.err = fmt.Errorf("unknown service: %s", value)
+			return nil
+		}
 		if m.dryRun {
 			m.setDryRunNotice(fmt.Sprintf("add service %s to zone %s (%s)", value, zone, modeLabel(m.permanent)))
 			return nil
@@ -2263,6 +2283,60 @@ func (m *Model) completePath() {
 
 	if len(names) > 1 && prefix == base {
 		m.notice = "Matches: " + strings.Join(limitList(names, 8), "  ")
+	} else {
+		m.notice = ""
+	}
+}
+
+func (m *Model) serviceExists(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, s := range m.availableServices {
+		if s == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) completeServiceName() {
+	raw := strings.TrimSpace(m.input.Value())
+	if raw == "" {
+		m.notice = "Type a service name, then press Tab"
+		return
+	}
+	if m.servicesLoading {
+		m.notice = "Service list loading..."
+		return
+	}
+	if m.servicesErr != nil {
+		m.notice = "Service list unavailable"
+		return
+	}
+	if len(m.availableServices) == 0 {
+		m.notice = "No services available"
+		return
+	}
+	matches := make([]string, 0)
+	for _, name := range m.availableServices {
+		if strings.HasPrefix(name, raw) {
+			matches = append(matches, name)
+		}
+	}
+	if len(matches) == 0 {
+		m.notice = "No matches"
+		return
+	}
+	sort.Strings(matches)
+	prefix := commonPrefix(matches)
+	if prefix == "" {
+		prefix = raw
+	}
+	m.input.SetValue(prefix)
+	m.input.CursorEnd()
+	if len(matches) > 1 && prefix == raw {
+		m.notice = "Matches: " + strings.Join(limitList(matches, 8), "  ")
 	} else {
 		m.notice = ""
 	}
