@@ -5,7 +5,10 @@ package backup
 
 import (
 	"encoding/xml"
+	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"lazyfirewall/internal/firewalld"
 )
@@ -100,4 +103,79 @@ func ParseZoneXML(data []byte) (*firewalld.Zone, error) {
 		}
 	}
 	return z, nil
+}
+
+func MarshalZoneXML(z *firewalld.Zone) ([]byte, error) {
+	if z == nil {
+		return nil, fmt.Errorf("zone is nil")
+	}
+	zx := zoneXML{
+		Target:      z.Target,
+		Short:       z.Short,
+		Description: z.Description,
+	}
+	if z.Masquerade {
+		zx.Masquerade = &struct{}{}
+	}
+	if z.IcmpInvert {
+		zx.IcmpBlockInversion = &struct{}{}
+	}
+	for _, s := range z.Services {
+		if s != "" {
+			zx.Services = append(zx.Services, serviceXML{Name: s})
+		}
+	}
+	for _, p := range z.Ports {
+		if p.Port != "" && p.Protocol != "" {
+			zx.Ports = append(zx.Ports, portXML{Port: p.Port, Protocol: p.Protocol})
+		}
+	}
+	for _, i := range z.Interfaces {
+		if i != "" {
+			zx.Interfaces = append(zx.Interfaces, ifaceXML{Name: i})
+		}
+	}
+	for _, s := range z.Sources {
+		if s == "" {
+			continue
+		}
+		if strings.HasPrefix(s, "mac:") {
+			zx.Sources = append(zx.Sources, sourceXML{Mac: strings.TrimPrefix(s, "mac:")})
+			continue
+		}
+		if strings.HasPrefix(s, "ipset:") {
+			zx.Sources = append(zx.Sources, sourceXML{IPSet: strings.TrimPrefix(s, "ipset:")})
+			continue
+		}
+		zx.Sources = append(zx.Sources, sourceXML{Address: s})
+	}
+	for _, i := range z.IcmpBlocks {
+		if i != "" {
+			zx.IcmpBlocks = append(zx.IcmpBlocks, icmpXML{Name: i})
+		}
+	}
+	data, err := xml.MarshalIndent(zx, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte(xml.Header), data...), nil
+}
+
+func WriteZoneXMLFile(zone string, z *firewalld.Zone) (string, error) {
+	if zone == "" {
+		return "", fmt.Errorf("zone name is empty")
+	}
+	data, err := MarshalZoneXML(z)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join("/etc/firewalld/zones")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	dest := filepath.Join(dir, zone+".xml")
+	if err := os.WriteFile(dest, data, 0o644); err != nil {
+		return "", err
+	}
+	return dest, nil
 }

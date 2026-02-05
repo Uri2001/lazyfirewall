@@ -4,6 +4,11 @@
 package ui
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"lazyfirewall/internal/backup"
@@ -67,6 +72,16 @@ type backupPreviewMsg struct {
 }
 
 type backupRestoreMsg struct {
+	zone string
+	err  error
+}
+
+type exportMsg struct {
+	path string
+	err  error
+}
+
+type importMsg struct {
 	zone string
 	err  error
 }
@@ -198,6 +213,73 @@ func restoreBackupCmd(client *firewalld.Client, zone string, item backup.Backup)
 			return backupRestoreMsg{zone: zone, err: err}
 		}
 		return backupRestoreMsg{zone: zone, err: nil}
+	}
+}
+
+func exportZoneCmd(path string, data *firewalld.Zone) tea.Cmd {
+	return func() tea.Msg {
+		if data == nil {
+			return exportMsg{err: fmt.Errorf("no data to export")}
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		var out []byte
+		var err error
+		switch ext {
+		case ".json":
+			out, err = json.MarshalIndent(data, "", "  ")
+		case ".xml":
+			out, err = backup.MarshalZoneXML(data)
+		default:
+			return exportMsg{err: fmt.Errorf("unsupported export format: %s", ext)}
+		}
+		if err != nil {
+			return exportMsg{err: err}
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return exportMsg{err: err}
+		}
+		if err := os.WriteFile(path, out, 0o644); err != nil {
+			return exportMsg{err: err}
+		}
+		return exportMsg{path: path, err: nil}
+	}
+}
+
+func importZoneCmd(client *firewalld.Client, zone, path string) tea.Cmd {
+	return func() tea.Msg {
+		ext := strings.ToLower(filepath.Ext(path))
+		var z *firewalld.Zone
+		var err error
+		switch ext {
+		case ".json":
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return importMsg{zone: zone, err: err}
+			}
+			var parsed firewalld.Zone
+			if err := json.Unmarshal(data, &parsed); err != nil {
+				return importMsg{zone: zone, err: err}
+			}
+			z = &parsed
+		case ".xml":
+			z, err = backup.ParseZoneXMLFile(path)
+			if err != nil {
+				return importMsg{zone: zone, err: err}
+			}
+		default:
+			return importMsg{zone: zone, err: fmt.Errorf("unsupported import format: %s", ext)}
+		}
+		if z == nil {
+			return importMsg{zone: zone, err: fmt.Errorf("no data loaded from file")}
+		}
+		z.Name = zone
+		if _, err := backup.WriteZoneXMLFile(zone, z); err != nil {
+			return importMsg{zone: zone, err: err}
+		}
+		if err := client.Reload(); err != nil {
+			return importMsg{zone: zone, err: err}
+		}
+		return importMsg{zone: zone, err: nil}
 	}
 }
 

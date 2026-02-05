@@ -44,6 +44,8 @@ const (
 	inputAddZone
 	inputDeleteZone
 	inputPanicConfirm
+	inputExportZone
+	inputImportZone
 	inputSearch
 )
 
@@ -90,6 +92,7 @@ type Model struct {
 	backupErr      error
 	backupDone     map[string]bool
 	pendingMutation tea.Cmd
+	notice         string
 
 	detailsMode    bool
 	detailsLoading bool

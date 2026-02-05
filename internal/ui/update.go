@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
+	"lazyfirewall/internal/backup"
 	"lazyfirewall/internal/firewalld"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -220,11 +223,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.templateMode = true
 			m.templateIndex = 0
 			return m, nil
+		case "ctrl+e":
+			if len(m.zones) == 0 || m.selected >= len(m.zones) {
+				return m, nil
+			}
+			current := m.currentData()
+			if current == nil {
+				m.err = fmt.Errorf("no data loaded")
+				return m, nil
+			}
+			m.err = nil
+			m.notice = ""
+			zone := m.zones[m.selected]
+			m.inputMode = inputExportZone
+			m.input.Placeholder = "export path (.json or .xml)"
+			m.input.SetValue(defaultExportPath(zone))
+			m.input.CursorEnd()
+			m.input.Focus()
+			return m, nil
+		case "ctrl+i":
+			if m.readOnly {
+				m.err = firewalld.ErrPermissionDenied
+				return m, nil
+			}
+			if len(m.zones) == 0 || m.selected >= len(m.zones) {
+				return m, nil
+			}
+			m.err = nil
+			m.notice = ""
+			m.inputMode = inputImportZone
+			m.input.Placeholder = "import path (.json or .xml)"
+			m.input.SetValue("")
+			m.input.CursorEnd()
+			m.input.Focus()
+			return m, nil
 		case "ctrl+r":
 			if len(m.zones) == 0 || m.selected >= len(m.zones) {
 				return m, nil
 			}
 			m.err = nil
+			m.notice = ""
 			m.backupMode = true
 			m.backupIndex = 0
 			m.backupPreview = ""
@@ -607,6 +645,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.backupItems = nil
 		m.backupPreview = ""
 		m.backupErr = nil
+		m.loading = true
+		m.pendingZone = msg.zone
+		return m, tea.Batch(
+			fetchZoneSettingsCmd(m.client, msg.zone, false),
+			fetchZoneSettingsCmd(m.client, msg.zone, true),
+			fetchActiveZonesCmd(m.client),
+		)
+	case exportMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.err = nil
+		m.notice = fmt.Sprintf("Exported to %s", msg.path)
+		return m, nil
+	case importMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.err = nil
+		m.notice = fmt.Sprintf("Imported from file")
 		m.loading = true
 		m.pendingZone = msg.zone
 		return m, tea.Batch(
@@ -1030,6 +1090,32 @@ func (m *Model) submitInput() tea.Cmd {
 		m.err = nil
 		m.panicAutoArmed = true
 		return enablePanicModeCmd(m.client)
+	}
+
+	if m.inputMode == inputExportZone {
+		current := m.currentData()
+		if current == nil {
+			m.err = fmt.Errorf("no data loaded")
+			return nil
+		}
+		m.inputMode = inputNone
+		m.input.Blur()
+		m.err = nil
+		m.notice = ""
+		return exportZoneCmd(value, current)
+	}
+
+	if m.inputMode == inputImportZone {
+		if len(m.zones) == 0 || m.selected >= len(m.zones) {
+			m.err = fmt.Errorf("no zone selected")
+			return nil
+		}
+		zone := m.zones[m.selected]
+		m.inputMode = inputNone
+		m.input.Blur()
+		m.err = nil
+		m.notice = ""
+		return m.maybeBackup(zone, true, importZoneCmd(m.client, zone, value))
 	}
 
 	if m.inputMode == inputAddZone {
@@ -1461,4 +1547,17 @@ func indexOfZone(zones []string, zone string) int {
 		}
 	}
 	return -1
+}
+
+func defaultExportPath(zone string) string {
+	ts := time.Now().Format("20060102-150405")
+	name := fmt.Sprintf("zone-%s-%s.json", zone, ts)
+	if dir, err := backup.Dir(); err == nil {
+		base := filepath.Dir(dir)
+		return filepath.Join(base, "exports", name)
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".config", "lazyfirewall", "exports", name)
+	}
+	return name
 }

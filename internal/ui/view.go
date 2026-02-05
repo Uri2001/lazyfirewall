@@ -121,6 +121,10 @@ func renderMain(m Model, width int) string {
 		b.WriteString(errorStyle.Render("Error: " + m.err.Error()))
 		b.WriteString("\n\n")
 	}
+	if m.notice != "" {
+		b.WriteString(dimStyle.Render(m.notice))
+		b.WriteString("\n\n")
+	}
 
 	if m.readOnly {
 		b.WriteString(warnStyle.Render("🔒 Read-Only Mode - Run with sudo for editing"))
@@ -907,6 +911,8 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  t           Apply template\n")
 	b.WriteString("  Alt+P       Panic mode (type YES)\n")
 	b.WriteString("  Ctrl+R      Backup restore menu\n")
+	b.WriteString("  Ctrl+E      Export zone (JSON/XML)\n")
+	b.WriteString("  Ctrl+I      Import zone (JSON/XML)\n")
 	b.WriteString("  Enter       Service details\n\n")
 
 	b.WriteString("Search:\n")
@@ -1061,6 +1067,10 @@ func renderInput(m Model) string {
 		label = "Delete zone (type name): "
 	case inputPanicConfirm:
 		label = "PANIC confirm: "
+	case inputExportZone:
+		label = "Export path: "
+	case inputImportZone:
+		label = "Import path: "
 	case inputSearch:
 		label = "Search: "
 	}
