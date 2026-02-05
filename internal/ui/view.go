@@ -973,6 +973,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("Global:\n")
 	b.WriteString("  ?           Toggle help\n")
 	b.WriteString("  q / Ctrl+C  Quit\n\n")
+	b.WriteString("  --dry-run/-n  Start in dry-run mode\n\n")
 
 	b.WriteString("Navigation:\n")
 	b.WriteString("  Tab         Switch focus\n")
@@ -1218,6 +1219,9 @@ func renderStatus(m Model) string {
 	prefix := ""
 	if m.readOnly {
 		prefix = "🔒 Read-Only | "
+	}
+	if m.dryRun {
+		prefix = "🧪 Dry-Run | " + prefix
 	}
 	if m.panicMode {
 		prefix = "🚨 PANIC | " + prefix

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -13,6 +14,11 @@ import (
 )
 
 func main() {
+	var dryRun bool
+	flag.BoolVar(&dryRun, "dry-run", false, "show changes without applying")
+	flag.BoolVar(&dryRun, "n", false, "alias for --dry-run")
+	flag.Parse()
+
 	logger.Init()
 
 	client, err := firewalld.NewClient()
@@ -24,7 +30,7 @@ func main() {
 	}
 	defer client.Close()
 
-	if err := ui.Run(client); err != nil {
+	if err := ui.Run(client, ui.Options{DryRun: dryRun}); err != nil {
 		fmt.Fprintf(os.Stderr, "UI error: %v\n", err)
 		os.Exit(1)
 	}

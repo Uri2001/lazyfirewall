@@ -66,6 +66,7 @@ type Model struct {
 	selected  int
 	focus     focusArea
 	permanent bool
+	dryRun    bool
 
 	tab                 mainTab
 	serviceIndex        int
@@ -130,7 +131,11 @@ type Model struct {
 	inputMode inputMode
 }
 
-func NewModel(client *firewalld.Client) Model {
+type Options struct {
+	DryRun bool
+}
+
+func NewModel(client *firewalld.Client, opts Options) Model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Line
 
@@ -149,6 +154,7 @@ func NewModel(client *firewalld.Client) Model {
 		inputMode:    inputNone,
 		permanent:    false,
 		readOnly:     client.ReadOnly(),
+		dryRun:       opts.DryRun,
 		panicAutoDur: 10 * time.Minute,
 		backupDone:   make(map[string]bool),
 		ipsetLoading: true,

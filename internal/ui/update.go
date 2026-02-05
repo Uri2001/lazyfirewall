@@ -102,6 +102,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				item := m.backupItems[m.backupIndex]
+				if m.dryRun {
+					m.setDryRunNotice(fmt.Sprintf("restore backup for zone %s", item.Zone))
+					return m, nil
+				}
 				m.err = nil
 				m.loading = true
 				m.pendingZone = item.Zone
@@ -306,6 +310,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.err = nil
+			if m.dryRun {
+				if m.panicMode {
+					m.setDryRunNotice("disable panic mode")
+				} else {
+					m.setDryRunNotice("enable panic mode")
+				}
+				return m, nil
+			}
 			if m.panicMode {
 				m.panicAutoArmed = false
 				return m, disablePanicModeCmd(m.client)
@@ -377,11 +389,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.zones) == 0 {
 				return m, nil
 			}
+			zone := m.zones[m.selected]
+			if m.dryRun {
+				m.setDryRunNotice(fmt.Sprintf("commit runtime → permanent for zone %s", zone))
+				return m, nil
+			}
 			m.loading = true
 			m.err = nil
 			m.notice = ""
-			m.pendingZone = m.zones[m.selected]
-			zone := m.zones[m.selected]
+			m.pendingZone = zone
 			return m, m.maybeBackup(zone, true, commitRuntimeCmd(m.client, zone, nil, recordNone, false))
 		case "u":
 			if m.readOnly {
@@ -391,11 +407,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.zones) == 0 {
 				return m, nil
 			}
+			zone := m.zones[m.selected]
+			if m.dryRun {
+				m.setDryRunNotice(fmt.Sprintf("reload firewalld for zone %s (revert runtime)", zone))
+				return m, nil
+			}
 			m.loading = true
 			m.err = nil
 			m.notice = ""
-			m.pendingZone = m.zones[m.selected]
-			return m, reloadCmd(m.client, m.zones[m.selected], nil, recordNone, false)
+			m.pendingZone = zone
+			return m, reloadCmd(m.client, zone, nil, recordNone, false)
 		case "ctrl+z":
 			if m.readOnly {
 				m.err = firewalld.ErrPermissionDenied
@@ -552,6 +573,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				zone := m.zones[m.selected]
+				if m.dryRun {
+					m.setDryRunNotice(fmt.Sprintf("set default zone to %s", zone))
+					return m, nil
+				}
 				m.err = nil
 				return m, setDefaultZoneCmd(m.client, zone)
 			}
@@ -1006,6 +1031,18 @@ func (m *Model) maybeBackup(zone string, needsBackup bool, cmd tea.Cmd) tea.Cmd 
 	return createBackupCmd(zone)
 }
 
+func (m *Model) setDryRunNotice(action string) {
+	m.err = nil
+	m.notice = "DRY RUN: would " + action
+}
+
+func modeLabel(permanent bool) string {
+	if permanent {
+		return "permanent"
+	}
+	return "runtime"
+}
+
 const undoLimit = 20
 
 func (m *Model) pushUndo(action undoAction, clearRedo bool) {
@@ -1412,6 +1449,14 @@ func (m *Model) toggleMasquerade() tea.Cmd {
 	}
 	zone := m.zones[m.selected]
 	enabled := !current.Masquerade
+	if m.dryRun {
+		state := "on"
+		if !enabled {
+			state = "off"
+		}
+		m.setDryRunNotice(fmt.Sprintf("set masquerade %s for zone %s (%s)", state, zone, modeLabel(m.permanent)))
+		return nil
+	}
 	return m.maybeBackup(zone, true, m.actionMasquerade(zone, enabled, m.permanent))
 }
 
@@ -1459,6 +1504,10 @@ func (m *Model) submitInput() tea.Cmd {
 		m.inputMode = inputNone
 		m.input.Blur()
 		m.err = nil
+		if m.dryRun {
+			m.setDryRunNotice("enable panic mode")
+			return nil
+		}
 		m.panicAutoArmed = true
 		return enablePanicModeCmd(m.client)
 	}
@@ -1486,6 +1535,10 @@ func (m *Model) submitInput() tea.Cmd {
 		m.input.Blur()
 		m.err = nil
 		m.notice = ""
+		if m.dryRun {
+			m.setDryRunNotice(fmt.Sprintf("import zone from %s into %s", value, zone))
+			return nil
+		}
 		return m.maybeBackup(zone, true, importZoneCmd(m.client, zone, value))
 	}
 
@@ -1502,6 +1555,10 @@ func (m *Model) submitInput() tea.Cmd {
 		}
 		m.inputMode = inputNone
 		m.input.Blur()
+		if m.dryRun {
+			m.setDryRunNotice(fmt.Sprintf("add zone %s", value))
+			return nil
+		}
 		m.loading = true
 		m.err = nil
 		m.runtimeInvalid = false
@@ -1521,6 +1578,10 @@ func (m *Model) submitInput() tea.Cmd {
 		}
 		m.inputMode = inputNone
 		m.input.Blur()
+		if m.dryRun {
+			m.setDryRunNotice(fmt.Sprintf("delete zone %s", zone))
+			return nil
+		}
 		m.loading = true
 		m.err = nil
 		m.runtimeInvalid = false
@@ -1555,6 +1616,10 @@ func (m *Model) submitInput() tea.Cmd {
 		m.input.Blur()
 		m.err = nil
 		m.notice = ""
+		if m.dryRun {
+			m.setDryRunNotice(fmt.Sprintf("add ipset %s (%s)", name, ipsetType))
+			return nil
+		}
 		m.ipsetLoading = true
 		return addIPSetCmd(m.client, name, ipsetType)
 	}
@@ -1573,6 +1638,10 @@ func (m *Model) submitInput() tea.Cmd {
 		m.input.Blur()
 		m.err = nil
 		m.notice = ""
+		if m.dryRun {
+			m.setDryRunNotice(fmt.Sprintf("add ipset entry to %s (%s)", name, modeLabel(m.permanent)))
+			return nil
+		}
 		m.ipsetLoading = true
 		return addIPSetEntryCmd(m.client, name, strings.TrimSpace(value), m.permanent)
 	}
@@ -1591,6 +1660,10 @@ func (m *Model) submitInput() tea.Cmd {
 		m.input.Blur()
 		m.err = nil
 		m.notice = ""
+		if m.dryRun {
+			m.setDryRunNotice(fmt.Sprintf("remove ipset entry from %s (%s)", name, modeLabel(m.permanent)))
+			return nil
+		}
 		m.ipsetLoading = true
 		return removeIPSetEntryCmd(m.client, name, strings.TrimSpace(value), m.permanent)
 	}
@@ -1609,6 +1682,10 @@ func (m *Model) submitInput() tea.Cmd {
 		m.input.Blur()
 		m.err = nil
 		m.notice = ""
+		if m.dryRun {
+			m.setDryRunNotice(fmt.Sprintf("delete ipset %s", name))
+			return nil
+		}
 		m.ipsetLoading = true
 		return removeIPSetCmd(m.client, name)
 	}
@@ -1623,6 +1700,10 @@ func (m *Model) submitInput() tea.Cmd {
 	case tabServices:
 		m.inputMode = inputNone
 		m.input.Blur()
+		if m.dryRun {
+			m.setDryRunNotice(fmt.Sprintf("add service %s to zone %s (%s)", value, zone, modeLabel(m.permanent)))
+			return nil
+		}
 		return m.maybeBackup(zone, true, m.actionAddService(zone, value, m.permanent))
 	case tabPorts:
 		port, err := parsePortInput(value)
@@ -1632,12 +1713,21 @@ func (m *Model) submitInput() tea.Cmd {
 		}
 		m.inputMode = inputNone
 		m.input.Blur()
+		if m.dryRun {
+			label := port.Port + "/" + port.Protocol
+			m.setDryRunNotice(fmt.Sprintf("add port %s to zone %s (%s)", label, zone, modeLabel(m.permanent)))
+			return nil
+		}
 		return m.maybeBackup(zone, true, m.actionAddPort(zone, port, m.permanent))
 	case tabRich:
 		switch m.inputMode {
 		case inputAddRich:
 			m.inputMode = inputNone
 			m.input.Blur()
+			if m.dryRun {
+				m.setDryRunNotice(fmt.Sprintf("add rich rule to zone %s (%s)", zone, modeLabel(m.permanent)))
+				return nil
+			}
 			return m.maybeBackup(zone, true, m.actionAddRichRule(zone, value, m.permanent))
 		case inputEditRich:
 			oldRule := m.editRichOld
@@ -1645,6 +1735,10 @@ func (m *Model) submitInput() tea.Cmd {
 			m.inputMode = inputNone
 			m.input.Blur()
 			if oldRule == value {
+				return nil
+			}
+			if m.dryRun {
+				m.setDryRunNotice(fmt.Sprintf("edit rich rule in zone %s (%s)", zone, modeLabel(m.permanent)))
 				return nil
 			}
 			return m.maybeBackup(zone, true, m.actionEditRichRule(zone, oldRule, value, m.permanent))
@@ -1655,6 +1749,10 @@ func (m *Model) submitInput() tea.Cmd {
 		case inputAddInterface:
 			m.inputMode = inputNone
 			m.input.Blur()
+			if m.dryRun {
+				m.setDryRunNotice(fmt.Sprintf("add interface %s to zone %s (%s)", value, zone, modeLabel(m.permanent)))
+				return nil
+			}
 			return m.maybeBackup(zone, true, m.actionAddInterface(zone, value, m.permanent))
 		case inputAddSource:
 			if net.ParseIP(value) == nil {
@@ -1665,6 +1763,10 @@ func (m *Model) submitInput() tea.Cmd {
 			}
 			m.inputMode = inputNone
 			m.input.Blur()
+			if m.dryRun {
+				m.setDryRunNotice(fmt.Sprintf("add source %s to zone %s (%s)", value, zone, modeLabel(m.permanent)))
+				return nil
+			}
 			return m.maybeBackup(zone, true, m.actionAddSource(zone, value, m.permanent))
 		}
 		return nil
@@ -1693,18 +1795,31 @@ func (m *Model) removeSelected() tea.Cmd {
 			return nil
 		}
 		service := current.Services[m.serviceIndex]
+		if m.dryRun {
+			m.setDryRunNotice(fmt.Sprintf("remove service %s from zone %s (%s)", service, zone, modeLabel(m.permanent)))
+			return nil
+		}
 		return m.maybeBackup(zone, true, m.actionRemoveService(zone, service, m.permanent))
 	case tabPorts:
 		if len(current.Ports) == 0 {
 			return nil
 		}
 		port := current.Ports[m.portIndex]
+		if m.dryRun {
+			label := port.Port + "/" + port.Protocol
+			m.setDryRunNotice(fmt.Sprintf("remove port %s from zone %s (%s)", label, zone, modeLabel(m.permanent)))
+			return nil
+		}
 		return m.maybeBackup(zone, true, m.actionRemovePort(zone, port, m.permanent))
 	case tabRich:
 		if len(current.RichRules) == 0 {
 			return nil
 		}
 		rule := current.RichRules[m.richIndex]
+		if m.dryRun {
+			m.setDryRunNotice(fmt.Sprintf("remove rich rule from zone %s (%s)", zone, modeLabel(m.permanent)))
+			return nil
+		}
 		return m.maybeBackup(zone, true, m.actionRemoveRichRule(zone, rule, m.permanent))
 	case tabNetwork:
 		items := m.networkItems()
@@ -1717,8 +1832,16 @@ func (m *Model) removeSelected() tea.Cmd {
 		item := items[m.networkIndex]
 		switch item.kind {
 		case "iface":
+			if m.dryRun {
+				m.setDryRunNotice(fmt.Sprintf("remove interface %s from zone %s (%s)", item.value, zone, modeLabel(m.permanent)))
+				return nil
+			}
 			return m.maybeBackup(zone, true, m.actionRemoveInterface(zone, item.value, m.permanent))
 		case "source":
+			if m.dryRun {
+				m.setDryRunNotice(fmt.Sprintf("remove source %s from zone %s (%s)", item.value, zone, modeLabel(m.permanent)))
+				return nil
+			}
 			return m.maybeBackup(zone, true, m.actionRemoveSource(zone, item.value, m.permanent))
 		default:
 			return nil
@@ -1875,6 +1998,11 @@ func (m *Model) applyTemplate() tea.Cmd {
 	}
 
 	m.templateMode = false
+	if m.dryRun {
+		zone := m.zones[m.selected]
+		m.setDryRunNotice(fmt.Sprintf("apply template %s to zone %s (%s)", tpl.Name, zone, modeLabel(m.permanent)))
+		return nil
+	}
 	m.loading = true
 	m.err = nil
 	zone := m.zones[m.selected]

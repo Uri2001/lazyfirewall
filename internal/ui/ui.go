@@ -9,8 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func Run(client *firewalld.Client) error {
-	model := NewModel(client)
+func Run(client *firewalld.Client, opts Options) error {
+	model := NewModel(client, opts)
 	program := tea.NewProgram(model, tea.WithAltScreen())
 	m, err := program.Run()
 	if finalModel, ok := m.(Model); ok {
