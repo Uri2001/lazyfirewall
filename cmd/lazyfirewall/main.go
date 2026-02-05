@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 
+	"lazyfirewall/internal/config"
 	"lazyfirewall/internal/firewalld"
 	"lazyfirewall/internal/logger"
 	"lazyfirewall/internal/ui"
@@ -27,9 +28,22 @@ func main() {
 	flag.BoolVar(&noColor, "no-color", false, "disable color output")
 	flag.Parse()
 
+	cfg, warnings, _, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+
+	if logLevel == "" {
+		logLevel = cfg.Advanced.LogLevel
+	}
+
 	if err := logger.Init(logLevel); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
+	}
+	for _, w := range warnings {
+		logger.WarnConfig(w)
 	}
 
 	if showVersion {
@@ -46,7 +60,12 @@ func main() {
 	}
 	defer client.Close()
 
-	if err := ui.Run(client, ui.Options{DryRun: dryRun, NoColor: noColor}); err != nil {
+	opts := ui.Options{
+		DryRun:           dryRun,
+		NoColor:          noColor,
+		DefaultPermanent: cfg.Behavior.DefaultPermanent,
+	}
+	if err := ui.Run(client, opts); err != nil {
 		fmt.Fprintf(os.Stderr, "UI error: %v\n", err)
 		os.Exit(1)
 	}

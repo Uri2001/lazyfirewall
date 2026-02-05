@@ -41,6 +41,23 @@ Disable colors:
 ./lazyfirewall --no-color
 ```
 
+## Config file
+Default path: `~/.config/lazyfirewall/config.toml`  
+Override with: `LAZYFIREWALL_CONFIG=/path/to/config.toml`
+
+Example:
+```toml
+[ui]
+theme = "default"
+
+[behavior]
+default_permanent = true
+auto_refresh_interval = 0
+
+[advanced]
+log_level = "info"
+```
+
 ## Highlights
 - Zones sidebar with active/default markers
 - Tabs: Services, Ports, Rich Rules, Network, IPSets, Info

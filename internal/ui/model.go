@@ -142,8 +142,9 @@ type Model struct {
 }
 
 type Options struct {
-	DryRun  bool
-	NoColor bool
+	DryRun           bool
+	NoColor          bool
+	DefaultPermanent bool
 }
 
 func NewModel(client *firewalld.Client, opts Options) Model {
@@ -163,7 +164,7 @@ func NewModel(client *firewalld.Client, opts Options) Model {
 		spinner:         sp,
 		input:           ti,
 		inputMode:       inputNone,
-		permanent:       false,
+		permanent:       opts.DefaultPermanent,
 		readOnly:        client.ReadOnly(),
 		dryRun:          opts.DryRun,
 		panicAutoDur:    10 * time.Minute,

@@ -58,6 +58,10 @@ func ParseLevel(value string) (slog.Level, error) {
 	}
 }
 
+func WarnConfig(msg string) {
+	slog.Warn("config warning", "message", msg)
+}
+
 func resolveLogPath() string {
 	if path := os.Getenv("LAZYFIREWALL_LOG_FILE"); path != "" {
 		return path
