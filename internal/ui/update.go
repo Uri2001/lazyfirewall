@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 
@@ -550,6 +551,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, disablePanicModeCmd(m.client)
 	case backupCreatedMsg:
 		if msg.err != nil {
+			if errors.Is(msg.err, os.ErrNotExist) {
+				m.err = fmt.Errorf("backup skipped: zone XML not found")
+				if m.pendingMutation != nil {
+					cmd := m.pendingMutation
+					m.pendingMutation = nil
+					return m, cmd
+				}
+				return m, nil
+			}
 			m.err = msg.err
 			m.pendingMutation = nil
 			return m, nil

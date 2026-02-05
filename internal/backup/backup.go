@@ -6,6 +6,7 @@ package backup
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -67,6 +68,7 @@ func CreateZoneBackup(zone string) (Backup, error) {
 	if err := copyFile(src, dest); err != nil {
 		return Backup{}, err
 	}
+	slog.Info("backup created", "zone", zone, "src", src, "dest", dest)
 
 	info, err := os.Stat(dest)
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"lazyfirewall/internal/backup"
 	"lazyfirewall/internal/firewalld"
 
 	"github.com/charmbracelet/lipgloss"
@@ -952,6 +953,10 @@ func renderBackupView(b *strings.Builder, m Model) {
 	if len(m.zones) > 0 && m.selected < len(m.zones) {
 		zone = m.zones[m.selected]
 	}
+	backupDir := ""
+	if dir, err := backup.Dir(); err == nil {
+		backupDir = dir
+	}
 	b.WriteString(titleStyle.Render("Backups: " + zone))
 	b.WriteString("\n\n")
 
@@ -962,6 +967,10 @@ func renderBackupView(b *strings.Builder, m Model) {
 
 	if len(m.backupItems) == 0 {
 		b.WriteString(dimStyle.Render("No backups found"))
+		if backupDir != "" {
+			b.WriteString("\n")
+			b.WriteString(dimStyle.Render("Dir: " + backupDir))
+		}
 		b.WriteString("\n\n")
 	} else {
 		for i, item := range m.backupItems {
