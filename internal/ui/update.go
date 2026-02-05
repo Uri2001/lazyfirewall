@@ -367,6 +367,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editRichOld = ""
 			m.ipsetLoading = true
 			return m, tea.Batch(fetchZonesCmd(m.client), fetchDefaultZoneCmd(m.client), fetchActiveZonesCmd(m.client), fetchPanicModeCmd(m.client), fetchIPSetsCmd(m.client, m.permanent))
+		case "ctrl+b":
+			return m, m.startManualBackup()
 		case "c":
 			if m.readOnly {
 				m.err = firewalld.ErrPermissionDenied
@@ -696,6 +698,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.pendingMutation
 			m.pendingMutation = nil
 			return m, cmd
+		}
+		return m, nil
+	case backupManualCreatedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.notice = "Backup created"
+		if msg.backup.Description != "" {
+			m.notice = fmt.Sprintf("Backup created: %s", msg.backup.Description)
+		}
+		if m.backupMode {
+			return m, fetchBackupsCmd(msg.zone)
 		}
 		return m, nil
 	case backupsMsg:
@@ -1283,6 +1298,20 @@ func (m *Model) startAddIPSet() tea.Cmd {
 	return nil
 }
 
+func (m *Model) startManualBackup() tea.Cmd {
+	if len(m.zones) == 0 || m.selected >= len(m.zones) {
+		m.err = fmt.Errorf("no zone selected")
+		return nil
+	}
+	m.err = nil
+	m.input.SetValue("")
+	m.input.Placeholder = "backup description (optional)"
+	m.inputMode = inputManualBackup
+	m.input.CursorEnd()
+	m.input.Focus()
+	return nil
+}
+
 func (m *Model) startDeleteIPSet() tea.Cmd {
 	if m.readOnly {
 		m.err = firewalld.ErrPermissionDenied
@@ -1497,6 +1526,19 @@ func (m *Model) submitInput() tea.Cmd {
 		m.runtimeInvalid = false
 		m.pendingZone = ""
 		return m.maybeBackup(zone, true, removeZoneCmd(m.client, zone))
+	}
+
+	if m.inputMode == inputManualBackup {
+		if len(m.zones) == 0 || m.selected >= len(m.zones) {
+			m.err = fmt.Errorf("no zone selected")
+			return nil
+		}
+		zone := m.zones[m.selected]
+		m.inputMode = inputNone
+		m.input.Blur()
+		m.err = nil
+		m.notice = ""
+		return createManualBackupCmd(zone, value)
 	}
 
 	if m.inputMode == inputAddIPSet {

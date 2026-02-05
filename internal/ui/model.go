@@ -52,6 +52,7 @@ const (
 	inputAddIPSetEntry
 	inputRemoveIPSetEntry
 	inputDeleteIPSet
+	inputManualBackup
 )
 
 type networkItem struct {

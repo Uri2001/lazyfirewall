@@ -58,6 +58,12 @@ type backupCreatedMsg struct {
 	err  error
 }
 
+type backupManualCreatedMsg struct {
+	zone   string
+	backup backup.Backup
+	err    error
+}
+
 type backupsMsg struct {
 	zone  string
 	items []backup.Backup
@@ -223,6 +229,13 @@ func createBackupCmd(zone string) tea.Cmd {
 	return func() tea.Msg {
 		_, err := backup.CreateZoneBackup(zone)
 		return backupCreatedMsg{zone: zone, err: err}
+	}
+}
+
+func createManualBackupCmd(zone, description string) tea.Cmd {
+	return func() tea.Msg {
+		b, err := backup.CreateZoneBackupWithDescription(zone, description)
+		return backupManualCreatedMsg{zone: zone, backup: b, err: err}
 	}
 }
 

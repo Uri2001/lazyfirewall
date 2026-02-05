@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -22,10 +24,11 @@ const (
 )
 
 type Backup struct {
-	Path string
-	Zone string
-	Time time.Time
-	Size int64
+	Path        string
+	Zone        string
+	Time        time.Time
+	Size        int64
+	Description string
 }
 
 func Dir() (string, error) {
@@ -50,6 +53,10 @@ func resolveHomeDir() (string, error) {
 }
 
 func CreateZoneBackup(zone string) (Backup, error) {
+	return CreateZoneBackupWithDescription(zone, "")
+}
+
+func CreateZoneBackupWithDescription(zone, description string) (Backup, error) {
 	src, err := zoneFilePath(zone)
 	if err != nil {
 		return Backup{}, err
@@ -63,7 +70,13 @@ func CreateZoneBackup(zone string) (Backup, error) {
 	}
 
 	ts := time.Now()
-	name := fmt.Sprintf("zone-%s-%s.xml", zone, ts.Format(timeFormat))
+	suffix := ""
+	desc := strings.TrimSpace(description)
+	if desc != "" {
+		desc = truncateDescription(desc, 40)
+		suffix = "__" + url.PathEscape(desc)
+	}
+	name := fmt.Sprintf("zone-%s-%s%s.xml", zone, ts.Format(timeFormat), suffix)
 	dest := filepath.Join(dir, name)
 	if err := copyFile(src, dest); err != nil {
 		return Backup{}, err
@@ -76,10 +89,11 @@ func CreateZoneBackup(zone string) (Backup, error) {
 	}
 
 	b := Backup{
-		Path: dest,
-		Zone: zone,
-		Time: ts,
-		Size: info.Size(),
+		Path:        dest,
+		Zone:        zone,
+		Time:        ts,
+		Size:        info.Size(),
+		Description: desc,
 	}
 	_ = pruneBackups(zone, keepBackups)
 	return b, nil
@@ -109,6 +123,15 @@ func ListBackups(zone string) ([]Backup, error) {
 			continue
 		}
 		tsPart := strings.TrimSuffix(strings.TrimPrefix(name, prefix), ".xml")
+		desc := ""
+		if parts := strings.SplitN(tsPart, "__", 2); len(parts) == 2 {
+			tsPart = parts[0]
+			if decoded, err := url.PathUnescape(parts[1]); err == nil {
+				desc = decoded
+			} else {
+				desc = parts[1]
+			}
+		}
 		ts, err := time.Parse(timeFormat, tsPart)
 		if err != nil {
 			continue
@@ -118,10 +141,11 @@ func ListBackups(zone string) ([]Backup, error) {
 			continue
 		}
 		items = append(items, Backup{
-			Path: filepath.Join(dir, name),
-			Zone: zone,
-			Time: ts,
-			Size: info.Size(),
+			Path:        filepath.Join(dir, name),
+			Zone:        zone,
+			Time:        ts,
+			Size:        info.Size(),
+			Description: desc,
 		})
 	}
 
@@ -197,4 +221,15 @@ func pruneBackups(zone string, keep int) error {
 		_ = os.Remove(b.Path)
 	}
 	return nil
+}
+
+func truncateDescription(desc string, max int) string {
+	if max <= 0 || desc == "" {
+		return ""
+	}
+	if utf8.RuneCountInString(desc) <= max {
+		return desc
+	}
+	runes := []rune(desc)
+	return string(runes[:max])
 }

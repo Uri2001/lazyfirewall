@@ -1000,6 +1000,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  t           Apply template\n")
 	b.WriteString("  Alt+P       Panic mode (type YES)\n")
 	b.WriteString("  Ctrl+R      Backup restore menu\n")
+	b.WriteString("  Ctrl+B      Create backup\n")
 	b.WriteString("  Ctrl+E      Export zone (JSON/XML)\n")
 	b.WriteString("  Alt+I       Import zone (JSON/XML)\n")
 	b.WriteString("  Ctrl+Z/Y    Undo / Redo\n")
@@ -1078,6 +1079,9 @@ func renderBackupView(b *strings.Builder, m Model) {
 		for i, item := range m.backupItems {
 			prefix := "  "
 			line := item.Time.Format("2006-01-02 15:04:05") + "  " + formatBytes(item.Size)
+			if item.Description != "" {
+				line = line + "  " + item.Description
+			}
 			if i == m.backupIndex {
 				prefix = "› "
 				line = selectedStyle.Render(line)
@@ -1177,6 +1181,8 @@ func renderInput(m Model) string {
 		label = "Remove IPSet entry (" + mode + "): "
 	case inputDeleteIPSet:
 		label = "Delete IPSet: "
+	case inputManualBackup:
+		label = "Backup description: "
 	}
 	return inputStyle.Render(label) + m.input.View()
 }
