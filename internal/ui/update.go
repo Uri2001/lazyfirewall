@@ -64,6 +64,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if m.backupMode {
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "esc", "ctrl+r":
+				m.backupMode = false
+				m.backupItems = nil
+				m.backupPreview = ""
+				m.backupErr = nil
+				return m, nil
+			case "j", "down":
+				if len(m.backupItems) > 0 && m.backupIndex < len(m.backupItems)-1 {
+					m.backupIndex++
+					item := m.backupItems[m.backupIndex]
+					return m, previewBackupCmd(item.Zone, item.Path, m.permanentData)
+				}
+				return m, nil
+			case "k", "up":
+				if len(m.backupItems) > 0 && m.backupIndex > 0 {
+					m.backupIndex--
+					item := m.backupItems[m.backupIndex]
+					return m, previewBackupCmd(item.Zone, item.Path, m.permanentData)
+				}
+				return m, nil
+			case "enter":
+				if m.readOnly {
+					m.err = firewalld.ErrPermissionDenied
+					return m, nil
+				}
+				if len(m.backupItems) == 0 || m.backupIndex >= len(m.backupItems) {
+					return m, nil
+				}
+				item := m.backupItems[m.backupIndex]
+				m.err = nil
+				m.loading = true
+				m.pendingZone = item.Zone
+				return m, restoreBackupCmd(m.client, item.Zone, item)
+			}
+			return m, nil
+		}
+	}
+
 	if m.inputMode != inputNone {
 		if key, ok := msg.(tea.KeyMsg); ok {
 			switch key.String() {
@@ -178,6 +219,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.templateMode = true
 			m.templateIndex = 0
 			return m, nil
+		case "ctrl+r":
+			if len(m.zones) == 0 || m.selected >= len(m.zones) {
+				return m, nil
+			}
+			m.err = nil
+			m.backupMode = true
+			m.backupIndex = 0
+			m.backupPreview = ""
+			m.backupErr = nil
+			zone := m.zones[m.selected]
+			return m, fetchBackupsCmd(zone)
 		case "alt+p", "alt+P":
 			if m.readOnly {
 				m.err = firewalld.ErrPermissionDenied
@@ -245,7 +297,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			m.err = nil
 			m.pendingZone = m.zones[m.selected]
-			return m, commitRuntimeCmd(m.client, m.zones[m.selected])
+			zone := m.zones[m.selected]
+			return m, m.maybeBackup(zone, true, commitRuntimeCmd(m.client, zone))
 		case "u":
 			if m.readOnly {
 				m.err = firewalld.ErrPermissionDenied
@@ -495,6 +548,62 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, disablePanicModeCmd(m.client)
+	case backupCreatedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.pendingMutation = nil
+			return m, nil
+		}
+		if m.backupDone == nil {
+			m.backupDone = make(map[string]bool)
+		}
+		m.backupDone[msg.zone] = true
+		if m.pendingMutation != nil {
+			cmd := m.pendingMutation
+			m.pendingMutation = nil
+			return m, cmd
+		}
+		return m, nil
+	case backupsMsg:
+		if msg.err != nil {
+			m.backupErr = msg.err
+			m.backupItems = nil
+			m.backupPreview = ""
+			return m, nil
+		}
+		m.backupItems = msg.items
+		m.backupErr = nil
+		if len(m.backupItems) > 0 {
+			m.backupIndex = 0
+			item := m.backupItems[m.backupIndex]
+			return m, previewBackupCmd(item.Zone, item.Path, m.permanentData)
+		}
+		m.backupPreview = ""
+		return m, nil
+	case backupPreviewMsg:
+		if msg.err != nil {
+			m.backupPreview = ""
+			m.backupErr = msg.err
+			return m, nil
+		}
+		m.backupPreview = msg.preview
+		return m, nil
+	case backupRestoreMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.backupMode = false
+		m.backupItems = nil
+		m.backupPreview = ""
+		m.backupErr = nil
+		m.loading = true
+		m.pendingZone = msg.zone
+		return m, tea.Batch(
+			fetchZoneSettingsCmd(m.client, msg.zone, false),
+			fetchZoneSettingsCmd(m.client, msg.zone, true),
+			fetchActiveZonesCmd(m.client),
+		)
 	case defaultZoneMsg:
 		if msg.err != nil {
 			if errors.Is(msg.err, firewalld.ErrPermissionDenied) {
@@ -639,6 +748,26 @@ func (m *Model) startZoneLoad(zone string, reset bool) tea.Cmd {
 		fetchZoneSettingsCmd(m.client, zone, false),
 		fetchZoneSettingsCmd(m.client, zone, true),
 	)
+}
+
+func (m *Model) maybeBackup(zone string, needsBackup bool, cmd tea.Cmd) tea.Cmd {
+	if !needsBackup {
+		return cmd
+	}
+	if m.readOnly {
+		return cmd
+	}
+	if zone == "" {
+		return cmd
+	}
+	if m.backupDone == nil {
+		m.backupDone = make(map[string]bool)
+	}
+	if m.backupDone[zone] {
+		return cmd
+	}
+	m.pendingMutation = cmd
+	return createBackupCmd(zone)
 }
 
 func (m *Model) moveMainSelection(delta int) {
@@ -842,7 +971,7 @@ func (m *Model) toggleMasquerade() tea.Cmd {
 	}
 	zone := m.zones[m.selected]
 	enabled := !current.Masquerade
-	return setMasqueradeCmd(m.client, zone, enabled, m.permanent)
+	return m.maybeBackup(zone, true, setMasqueradeCmd(m.client, zone, enabled, m.permanent))
 }
 
 func (m *Model) startEditRich() tea.Cmd {
@@ -929,7 +1058,7 @@ func (m *Model) submitInput() tea.Cmd {
 		m.err = nil
 		m.runtimeInvalid = false
 		m.pendingZone = ""
-		return removeZoneCmd(m.client, zone)
+		return m.maybeBackup(zone, true, removeZoneCmd(m.client, zone))
 	}
 
 	if m.currentData() == nil || len(m.zones) == 0 {
@@ -942,7 +1071,7 @@ func (m *Model) submitInput() tea.Cmd {
 	case tabServices:
 		m.inputMode = inputNone
 		m.input.Blur()
-		return addServiceCmd(m.client, zone, value, m.permanent)
+		return m.maybeBackup(zone, true, addServiceCmd(m.client, zone, value, m.permanent))
 	case tabPorts:
 		port, err := parsePortInput(value)
 		if err != nil {
@@ -951,13 +1080,13 @@ func (m *Model) submitInput() tea.Cmd {
 		}
 		m.inputMode = inputNone
 		m.input.Blur()
-		return addPortCmd(m.client, zone, port, m.permanent)
+		return m.maybeBackup(zone, true, addPortCmd(m.client, zone, port, m.permanent))
 	case tabRich:
 		switch m.inputMode {
 		case inputAddRich:
 			m.inputMode = inputNone
 			m.input.Blur()
-			return addRichRuleCmd(m.client, zone, value, m.permanent)
+			return m.maybeBackup(zone, true, addRichRuleCmd(m.client, zone, value, m.permanent))
 		case inputEditRich:
 			oldRule := m.editRichOld
 			m.editRichOld = ""
@@ -966,7 +1095,7 @@ func (m *Model) submitInput() tea.Cmd {
 			if oldRule == value {
 				return nil
 			}
-			return updateRichRuleCmd(m.client, zone, oldRule, value, m.permanent)
+			return m.maybeBackup(zone, true, updateRichRuleCmd(m.client, zone, oldRule, value, m.permanent))
 		}
 		return nil
 	case tabNetwork:
@@ -974,7 +1103,7 @@ func (m *Model) submitInput() tea.Cmd {
 		case inputAddInterface:
 			m.inputMode = inputNone
 			m.input.Blur()
-			return addInterfaceCmd(m.client, zone, value, m.permanent)
+			return m.maybeBackup(zone, true, addInterfaceCmd(m.client, zone, value, m.permanent))
 		case inputAddSource:
 			if net.ParseIP(value) == nil {
 				if _, _, err := net.ParseCIDR(value); err != nil {
@@ -984,7 +1113,7 @@ func (m *Model) submitInput() tea.Cmd {
 			}
 			m.inputMode = inputNone
 			m.input.Blur()
-			return addSourceCmd(m.client, zone, value, m.permanent)
+			return m.maybeBackup(zone, true, addSourceCmd(m.client, zone, value, m.permanent))
 		}
 		return nil
 	default:
@@ -1009,19 +1138,19 @@ func (m *Model) removeSelected() tea.Cmd {
 			return nil
 		}
 		service := current.Services[m.serviceIndex]
-		return removeServiceCmd(m.client, zone, service, m.permanent)
+		return m.maybeBackup(zone, true, removeServiceCmd(m.client, zone, service, m.permanent))
 	case tabPorts:
 		if len(current.Ports) == 0 {
 			return nil
 		}
 		port := current.Ports[m.portIndex]
-		return removePortCmd(m.client, zone, port, m.permanent)
+		return m.maybeBackup(zone, true, removePortCmd(m.client, zone, port, m.permanent))
 	case tabRich:
 		if len(current.RichRules) == 0 {
 			return nil
 		}
 		rule := current.RichRules[m.richIndex]
-		return removeRichRuleCmd(m.client, zone, rule, m.permanent)
+		return m.maybeBackup(zone, true, removeRichRuleCmd(m.client, zone, rule, m.permanent))
 	case tabNetwork:
 		items := m.networkItems()
 		if len(items) == 0 {
@@ -1033,9 +1162,9 @@ func (m *Model) removeSelected() tea.Cmd {
 		item := items[m.networkIndex]
 		switch item.kind {
 		case "iface":
-			return removeInterfaceCmd(m.client, zone, item.value, m.permanent)
+			return m.maybeBackup(zone, true, removeInterfaceCmd(m.client, zone, item.value, m.permanent))
 		case "source":
-			return removeSourceCmd(m.client, zone, item.value, m.permanent)
+			return m.maybeBackup(zone, true, removeSourceCmd(m.client, zone, item.value, m.permanent))
 		default:
 			return nil
 		}
@@ -1161,7 +1290,7 @@ func (m *Model) applyTemplate() tea.Cmd {
 	m.err = nil
 	zone := m.zones[m.selected]
 	m.pendingZone = zone
-	return applyTemplateCmd(m.client, zone, services, ports, m.permanent)
+	return m.maybeBackup(zone, true, applyTemplateCmd(m.client, zone, services, ports, m.permanent))
 }
 
 func filterMissingServices(template, current []string) []string {

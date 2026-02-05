@@ -134,6 +134,10 @@ func renderMain(m Model, width int) string {
 		renderHelp(&b, m)
 		return mainStyle.Width(width).Render(b.String())
 	}
+	if m.backupMode {
+		renderBackupView(&b, m)
+		return mainStyle.Width(width).Render(b.String())
+	}
 
 	current := m.currentData()
 	if current == nil {
@@ -901,6 +905,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  u           Reload (revert runtime)\n")
 	b.WriteString("  t           Apply template\n")
 	b.WriteString("  Alt+P       Panic mode (type YES)\n")
+	b.WriteString("  Ctrl+R      Backup restore menu\n")
 	b.WriteString("  Enter       Service details\n\n")
 
 	b.WriteString("Search:\n")
@@ -940,6 +945,67 @@ func renderTemplates(b *strings.Builder, m Model) {
 
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("Enter to apply, Esc to cancel"))
+}
+
+func renderBackupView(b *strings.Builder, m Model) {
+	zone := "Unknown"
+	if len(m.zones) > 0 && m.selected < len(m.zones) {
+		zone = m.zones[m.selected]
+	}
+	b.WriteString(titleStyle.Render("Backups: " + zone))
+	b.WriteString("\n\n")
+
+	if m.backupErr != nil {
+		b.WriteString(errorStyle.Render("Error: " + m.backupErr.Error()))
+		b.WriteString("\n\n")
+	}
+
+	if len(m.backupItems) == 0 {
+		b.WriteString(dimStyle.Render("No backups found"))
+		b.WriteString("\n\n")
+	} else {
+		for i, item := range m.backupItems {
+			prefix := "  "
+			line := item.Time.Format("2006-01-02 15:04:05") + "  " + formatBytes(item.Size)
+			if i == m.backupIndex {
+				prefix = "› "
+				line = selectedStyle.Render(line)
+			}
+			b.WriteString(prefix + line + "\n")
+		}
+		b.WriteString("\n")
+		if m.backupPreview != "" {
+			b.WriteString(titleStyle.Render("Preview"))
+			b.WriteString("\n")
+			b.WriteString(m.backupPreview)
+			b.WriteString("\n\n")
+		} else {
+			b.WriteString(dimStyle.Render("Preview not available"))
+			b.WriteString("\n\n")
+		}
+	}
+
+	if m.readOnly {
+		b.WriteString(warnStyle.Render("Read-only mode: restore disabled"))
+		b.WriteString("\n")
+	}
+	b.WriteString(dimStyle.Render("Enter: restore  Esc/Ctrl+R: close  j/k: move"))
+}
+
+func formatBytes(size int64) string {
+	if size < 1024 {
+		return fmt.Sprintf("%d B", size)
+	}
+	kb := float64(size) / 1024
+	if kb < 1024 {
+		return fmt.Sprintf("%.1f KB", kb)
+	}
+	mb := kb / 1024
+	if mb < 1024 {
+		return fmt.Sprintf("%.1f MB", mb)
+	}
+	gb := mb / 1024
+	return fmt.Sprintf("%.1f GB", gb)
 }
 
 func portDiffMark(p firewalld.Port, permanent *firewalld.Zone) string {

@@ -6,6 +6,7 @@ package ui
 import (
 	"time"
 
+	"lazyfirewall/internal/backup"
 	"lazyfirewall/internal/firewalld"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -46,6 +47,29 @@ type panicToggleMsg struct {
 type panicTickMsg struct{}
 
 type panicAutoDisableMsg struct{}
+
+type backupCreatedMsg struct {
+	zone string
+	err  error
+}
+
+type backupsMsg struct {
+	zone  string
+	items []backup.Backup
+	err   error
+}
+
+type backupPreviewMsg struct {
+	zone    string
+	path    string
+	preview string
+	err     error
+}
+
+type backupRestoreMsg struct {
+	zone string
+	err  error
+}
 
 type zoneSettingsMsg struct {
 	zone      *firewalld.Zone
@@ -142,6 +166,39 @@ func panicAutoDisableCmd(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg {
 		return panicAutoDisableMsg{}
 	})
+}
+
+func createBackupCmd(zone string) tea.Cmd {
+	return func() tea.Msg {
+		_, err := backup.CreateZoneBackup(zone)
+		return backupCreatedMsg{zone: zone, err: err}
+	}
+}
+
+func fetchBackupsCmd(zone string) tea.Cmd {
+	return func() tea.Msg {
+		items, err := backup.ListBackups(zone)
+		return backupsMsg{zone: zone, items: items, err: err}
+	}
+}
+
+func previewBackupCmd(zone, path string, current *firewalld.Zone) tea.Cmd {
+	return func() tea.Msg {
+		preview, err := buildBackupPreview(path, current)
+		return backupPreviewMsg{zone: zone, path: path, preview: preview, err: err}
+	}
+}
+
+func restoreBackupCmd(client *firewalld.Client, zone string, item backup.Backup) tea.Cmd {
+	return func() tea.Msg {
+		if err := backup.RestoreZoneBackup(zone, item); err != nil {
+			return backupRestoreMsg{zone: zone, err: err}
+		}
+		if err := client.Reload(); err != nil {
+			return backupRestoreMsg{zone: zone, err: err}
+		}
+		return backupRestoreMsg{zone: zone, err: nil}
+	}
 }
 
 func fetchZoneSettingsCmd(client *firewalld.Client, zone string, permanent bool) tea.Cmd {

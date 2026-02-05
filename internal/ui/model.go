@@ -6,8 +6,10 @@ package ui
 import (
 	"time"
 
+	"lazyfirewall/internal/backup"
 	"lazyfirewall/internal/firewalld"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 )
@@ -81,6 +83,13 @@ type Model struct {
 	panicCountdown int
 	panicAutoDur   time.Duration
 	panicAutoArmed bool
+	backupMode     bool
+	backupItems    []backup.Backup
+	backupIndex    int
+	backupPreview  string
+	backupErr      error
+	backupDone     map[string]bool
+	pendingMutation tea.Cmd
 
 	detailsMode    bool
 	detailsLoading bool
@@ -121,6 +130,7 @@ func NewModel(client *firewalld.Client) Model {
 		permanent: false,
 		readOnly:  client.ReadOnly(),
 		panicAutoDur: 10 * time.Minute,
+		backupDone: make(map[string]bool),
 	}
 }
 
