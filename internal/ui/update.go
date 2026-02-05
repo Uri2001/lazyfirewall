@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -111,6 +112,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.inputMode != inputNone {
 		if key, ok := msg.(tea.KeyMsg); ok {
+			if key.String() == "tab" && (m.inputMode == inputExportZone || m.inputMode == inputImportZone) {
+				m.completePath()
+				return m, nil
+			}
 			switch key.String() {
 			case "ctrl+c":
 				return m, tea.Quit
@@ -139,6 +144,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(key)
+			if m.inputMode == inputExportZone || m.inputMode == inputImportZone {
+				m.notice = ""
+			}
 			if m.inputMode == inputSearch {
 				m.searchQuery = m.input.Value()
 				m.applySearchSelection()
@@ -1560,4 +1568,126 @@ func defaultExportPath(zone string) string {
 		return filepath.Join(home, ".config", "lazyfirewall", "exports", name)
 	}
 	return name
+}
+
+func (m *Model) completePath() {
+	raw := m.input.Value()
+	if raw == "" {
+		m.notice = "Type a path, then press Tab"
+		return
+	}
+
+	expanded, useTilde, home := expandUserPath(raw)
+	dir, base := splitPath(expanded)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		m.err = err
+		return
+	}
+
+	type cand struct {
+		name string
+		isDir bool
+	}
+	cands := make([]cand, 0)
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, base) {
+			cands = append(cands, cand{name: name, isDir: entry.IsDir()})
+		}
+	}
+	if len(cands) == 0 {
+		m.notice = "No matches"
+		return
+	}
+
+	sort.Slice(cands, func(i, j int) bool { return cands[i].name < cands[j].name })
+	names := make([]string, 0, len(cands))
+	for _, c := range cands {
+		if c.isDir {
+			names = append(names, c.name+string(os.PathSeparator))
+		} else {
+			names = append(names, c.name)
+		}
+	}
+
+	prefix := commonPrefix(names)
+	if prefix == "" {
+		prefix = base
+	}
+
+	newValue := joinPath(dir, prefix)
+	if strings.HasSuffix(prefix, string(os.PathSeparator)) && !strings.HasSuffix(newValue, string(os.PathSeparator)) {
+		newValue += string(os.PathSeparator)
+	}
+	if useTilde && home != "" && strings.HasPrefix(newValue, home) {
+		newValue = "~" + strings.TrimPrefix(newValue, home)
+	}
+
+	m.input.SetValue(newValue)
+	m.input.CursorEnd()
+
+	if len(names) > 1 && prefix == base {
+		m.notice = "Matches: " + strings.Join(limitList(names, 8), "  ")
+	} else {
+		m.notice = ""
+	}
+}
+
+func expandUserPath(path string) (expanded string, useTilde bool, home string) {
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		if h, err := os.UserHomeDir(); err == nil {
+			useTilde = true
+			home = h
+			if path == "~" {
+				return h, true, h
+			}
+			return filepath.Join(h, strings.TrimPrefix(path, "~/")), true, h
+		}
+	}
+	return path, false, ""
+}
+
+func splitPath(path string) (dir string, base string) {
+	if strings.HasSuffix(path, string(os.PathSeparator)) {
+		return path, ""
+	}
+	dir = filepath.Dir(path)
+	if dir == "" {
+		dir = "."
+	}
+	return dir, filepath.Base(path)
+}
+
+func joinPath(dir, base string) string {
+	if dir == "." || dir == "" {
+		return base
+	}
+	return filepath.Join(dir, base)
+}
+
+func commonPrefix(items []string) string {
+	if len(items) == 0 {
+		return ""
+	}
+	prefix := items[0]
+	for _, item := range items[1:] {
+		for !strings.HasPrefix(item, prefix) {
+			if prefix == "" {
+				return ""
+			}
+			prefix = prefix[:len(prefix)-1]
+		}
+	}
+	return prefix
+}
+
+func limitList(items []string, max int) []string {
+	if len(items) <= max {
+		return items
+	}
+	out := append([]string{}, items[:max]...)
+	out = append(out, "…")
+	return out
 }

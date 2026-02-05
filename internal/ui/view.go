@@ -913,6 +913,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  Ctrl+R      Backup restore menu\n")
 	b.WriteString("  Ctrl+E      Export zone (JSON/XML)\n")
 	b.WriteString("  Alt+I       Import zone (JSON/XML)\n")
+	b.WriteString("  Tab         Path autocomplete (export/import)\n")
 	b.WriteString("  Enter       Service details\n\n")
 
 	b.WriteString("Search:\n")
