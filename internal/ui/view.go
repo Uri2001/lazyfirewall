@@ -1008,6 +1008,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  n (ipsets)  New IPSet (permanent)\n")
 	b.WriteString("  a (ipsets)  Add entry\n")
 	b.WriteString("  d (ipsets)  Remove entry\n\n")
+	b.WriteString("  D (ipsets)  Delete IPSet\n\n")
 
 	b.WriteString("Search:\n")
 	b.WriteString("  /           Search current tab\n")
@@ -1174,6 +1175,8 @@ func renderInput(m Model) string {
 		label = "Add IPSet entry (" + mode + "): "
 	case inputRemoveIPSetEntry:
 		label = "Remove IPSet entry (" + mode + "): "
+	case inputDeleteIPSet:
+		label = "Delete IPSet: "
 	}
 	return inputStyle.Render(label) + m.input.View()
 }
@@ -1199,7 +1202,7 @@ func renderStatus(m Model) string {
 	if m.focus == focusZones {
 		actions = "n: new zone  d: delete zone  D: default"
 	} else if m.tab == tabIPSets {
-		actions = "n: new ipset  a: add entry  d: remove entry"
+		actions = "n: new ipset  a: add entry  d: remove entry  D: delete ipset"
 	}
 	templates := "  t: templates"
 	if m.readOnly {

@@ -354,6 +354,13 @@ func addIPSetCmd(client *firewalld.Client, name, ipsetType string) tea.Cmd {
 	}
 }
 
+func removeIPSetCmd(client *firewalld.Client, name string) tea.Cmd {
+	return func() tea.Msg {
+		err := client.RemoveIPSetPermanent(name)
+		return ipsetMutationMsg{name: name, err: err}
+	}
+}
+
 func addIPSetEntryCmd(client *firewalld.Client, name, entry string, permanent bool) tea.Cmd {
 	return func() tea.Msg {
 		var err error

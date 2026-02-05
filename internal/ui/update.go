@@ -541,19 +541,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "D":
-			if m.focus != focusZones {
-				return m, nil
+			if m.focus == focusZones {
+				if m.readOnly {
+					m.err = firewalld.ErrPermissionDenied
+					return m, nil
+				}
+				if len(m.zones) == 0 || m.selected >= len(m.zones) {
+					return m, nil
+				}
+				zone := m.zones[m.selected]
+				m.err = nil
+				return m, setDefaultZoneCmd(m.client, zone)
 			}
-			if m.readOnly {
-				m.err = firewalld.ErrPermissionDenied
-				return m, nil
+			if m.focus == focusMain && m.tab == tabIPSets {
+				return m, m.startDeleteIPSet()
 			}
-			if len(m.zones) == 0 || m.selected >= len(m.zones) {
-				return m, nil
-			}
-			zone := m.zones[m.selected]
-			m.err = nil
-			return m, setDefaultZoneCmd(m.client, zone)
+			return m, nil
 		}
 	case zonesMsg:
 		m.loading = false
@@ -1280,6 +1283,29 @@ func (m *Model) startAddIPSet() tea.Cmd {
 	return nil
 }
 
+func (m *Model) startDeleteIPSet() tea.Cmd {
+	if m.readOnly {
+		m.err = firewalld.ErrPermissionDenied
+		return nil
+	}
+	if !m.permanent {
+		m.err = fmt.Errorf("ipset deletion is permanent-only (press P)")
+		return nil
+	}
+	name := m.currentIPSetName()
+	if name == "" {
+		m.err = fmt.Errorf("no ipset selected")
+		return nil
+	}
+	m.err = nil
+	m.input.SetValue("")
+	m.input.Placeholder = "type ipset name to delete"
+	m.inputMode = inputDeleteIPSet
+	m.input.CursorEnd()
+	m.input.Focus()
+	return nil
+}
+
 func (m *Model) startRemoveIPSetEntry() tea.Cmd {
 	if m.readOnly {
 		m.err = firewalld.ErrPermissionDenied
@@ -1525,6 +1551,24 @@ func (m *Model) submitInput() tea.Cmd {
 		m.notice = ""
 		m.ipsetLoading = true
 		return removeIPSetEntryCmd(m.client, name, strings.TrimSpace(value), m.permanent)
+	}
+
+	if m.inputMode == inputDeleteIPSet {
+		name := m.currentIPSetName()
+		if name == "" {
+			m.err = fmt.Errorf("no ipset selected")
+			return nil
+		}
+		if strings.TrimSpace(value) != name {
+			m.err = fmt.Errorf("type ipset name to confirm deletion")
+			return nil
+		}
+		m.inputMode = inputNone
+		m.input.Blur()
+		m.err = nil
+		m.notice = ""
+		m.ipsetLoading = true
+		return removeIPSetCmd(m.client, name)
 	}
 
 	if m.currentData() == nil || len(m.zones) == 0 {

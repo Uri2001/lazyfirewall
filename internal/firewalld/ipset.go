@@ -147,6 +147,32 @@ func (c *Client) AddIPSetPermanent(name, ipsetType string) error {
 	return nil
 }
 
+func (c *Client) RemoveIPSetPermanent(name string) error {
+	if c.apiVersion != APIv2 {
+		return ErrUnsupportedAPI
+	}
+	if c.readOnly {
+		return ErrPermissionDenied
+	}
+	if name == "" {
+		return fmt.Errorf("ipset name is empty")
+	}
+
+	slog.Info("removing ipset (permanent)", "ipset", name)
+	obj := c.configIPSetObject(name)
+	method := dbusInterface + ".config.ipset.remove"
+	if err := c.callObject(obj, method, nil); err != nil {
+		if isPermissionDenied(err) {
+			return ErrPermissionDenied
+		}
+		if isInvalidIPSet(err) {
+			return ErrInvalidIPSet
+		}
+		return err
+	}
+	return nil
+}
+
 func (c *Client) AddIPSetEntryRuntime(name, entry string) error {
 	if c.apiVersion != APIv2 {
 		return ErrUnsupportedAPI
