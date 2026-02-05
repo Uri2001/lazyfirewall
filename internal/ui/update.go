@@ -985,7 +985,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.logMode {
 			return m, nil
 		}
-		if logMatchesZone(msg.line, m.logZone) {
+		if logMatchesSource(msg.line) && logMatchesZone(msg.line, m.logZone) {
 			m.logLines = append(m.logLines, msg.line)
 			if len(m.logLines) > logLimit {
 				m.logLines = m.logLines[len(m.logLines)-logLimit:]
@@ -2280,6 +2280,24 @@ func logMatchesZone(line, zone string) bool {
 			strings.Contains(lower, "zone: "+zoneLower)
 	}
 	return true
+}
+
+func logMatchesSource(line string) bool {
+	lower := strings.ToLower(line)
+	if strings.Contains(lower, "firewalld") {
+		return true
+	}
+	if strings.Contains(lower, "iptables") || strings.Contains(lower, "ip6tables") {
+		return true
+	}
+	if strings.Contains(lower, "nftables") || strings.Contains(lower, " nft ") || strings.HasPrefix(lower, "nft") {
+		return true
+	}
+	if (strings.Contains(lower, "in=") || strings.Contains(lower, "out=")) &&
+		(strings.Contains(lower, "drop") || strings.Contains(lower, "reject") || strings.Contains(lower, "final_")) {
+		return true
+	}
+	return false
 }
 
 func isValidZoneName(name string) bool {

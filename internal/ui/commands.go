@@ -598,7 +598,7 @@ func fetchServiceCatalogCmd(client *firewalld.Client) tea.Cmd {
 
 func startLogStreamCmd() tea.Cmd {
 	return func() tea.Msg {
-		cmd := exec.Command("journalctl", "-k", "-f", "-n", "20")
+		cmd := exec.Command("journalctl", "-f", "-n", "20", "-u", "firewalld", "+", "-k")
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			return logStreamMsg{err: err}

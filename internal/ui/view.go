@@ -802,7 +802,7 @@ func renderLogsView(b *strings.Builder, m Model) {
 	}
 	b.WriteString(titleStyle.Render("Logs"))
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("Filter: zone " + zone + " (best effort)"))
+	b.WriteString(dimStyle.Render("Filter: firewalld/iptables, zone " + zone + " (best effort)"))
 	b.WriteString("\n\n")
 
 	if m.logLoading {
