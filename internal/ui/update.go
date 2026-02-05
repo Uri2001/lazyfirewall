@@ -242,12 +242,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "S":
+			if m.logMode {
+				m.err = fmt.Errorf("split view not available in logs")
+				return m, nil
+			}
 			if m.tab == tabIPSets {
 				m.err = fmt.Errorf("split view not available for IPSets")
 				return m, nil
 			}
 			m.splitView = !m.splitView
 			return m, nil
+		case "L":
+			return m, m.toggleLogs()
 		case "?":
 			m.helpMode = !m.helpMode
 			if m.helpMode {
@@ -965,6 +971,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.servicesErr = nil
 		m.availableServices = msg.services
 		return m, nil
+	case logStreamMsg:
+		m.logLoading = false
+		if msg.err != nil {
+			m.logErr = msg.err
+			return m, nil
+		}
+		m.logErr = nil
+		m.logLineCh = msg.lines
+		m.logCancel = msg.cancel
+		return m, readLogLineCmd(msg.lines)
+	case logLineMsg:
+		if !m.logMode {
+			return m, nil
+		}
+		if logMatchesZone(msg.line, m.logZone) {
+			m.logLines = append(m.logLines, msg.line)
+			if len(m.logLines) > logLimit {
+				m.logLines = m.logLines[len(m.logLines)-logLimit:]
+			}
+		}
+		if m.logLineCh != nil {
+			return m, readLogLineCmd(m.logLineCh)
+		}
+		return m, nil
+	case logStreamEndMsg:
+		m.logLineCh = nil
+		return m, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -1005,6 +1038,11 @@ func (m *Model) startZoneLoad(zone string, reset bool) tea.Cmd {
 	m.loading = true
 	m.pendingZone = zone
 	m.ipsetLoading = true
+	if m.logMode {
+		m.logZone = zone
+		m.logLines = nil
+		m.logErr = nil
+	}
 	if reset {
 		m.detailsMode = false
 		m.templateMode = false
@@ -1059,7 +1097,39 @@ func modeLabel(permanent bool) string {
 	return "runtime"
 }
 
+func (m *Model) toggleLogs() tea.Cmd {
+	if m.logMode {
+		m.logMode = false
+		m.logLoading = false
+		m.logErr = nil
+		m.logLines = nil
+		m.logZone = ""
+		if m.logCancel != nil {
+			m.logCancel()
+			m.logCancel = nil
+		}
+		m.logLineCh = nil
+		return nil
+	}
+	m.logMode = true
+	m.logLoading = true
+	m.logErr = nil
+	m.logLines = nil
+	m.logLineCh = nil
+	m.logZone = ""
+	if len(m.zones) > 0 && m.selected < len(m.zones) {
+		m.logZone = m.zones[m.selected]
+	}
+	m.splitView = false
+	m.templateMode = false
+	m.detailsMode = false
+	m.inputMode = inputNone
+	m.input.Blur()
+	return startLogStreamCmd()
+}
+
 const undoLimit = 20
+const logLimit = 200
 
 func (m *Model) pushUndo(action undoAction, clearRedo bool) {
 	if len(m.undoStack) >= undoLimit {
@@ -2196,6 +2266,20 @@ func validateRichRule(value string) error {
 		return fmt.Errorf("rich rule must start with 'rule'")
 	}
 	return nil
+}
+
+func logMatchesZone(line, zone string) bool {
+	if zone == "" {
+		return true
+	}
+	lower := strings.ToLower(line)
+	zoneLower := strings.ToLower(zone)
+	if strings.Contains(lower, "zone=") || strings.Contains(lower, "zone:") {
+		return strings.Contains(lower, "zone="+zoneLower) ||
+			strings.Contains(lower, "zone:"+zoneLower) ||
+			strings.Contains(lower, "zone: "+zoneLower)
+	}
+	return true
 }
 
 func isValidZoneName(name string) bool {

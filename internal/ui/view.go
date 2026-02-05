@@ -164,7 +164,9 @@ func renderMain(m Model, width int) string {
 	if m.splitView && m.tab != tabIPSets {
 		b.WriteString(renderSplitView(m, width))
 	} else {
-		if m.templateMode {
+		if m.logMode {
+			renderLogsView(&b, m)
+		} else if m.templateMode {
 			renderTemplates(&b, m)
 		} else if m.detailsMode && m.tab == tabServices {
 			renderServiceDetails(&b, m)
@@ -793,6 +795,33 @@ func renderNetworkView(b *strings.Builder, m Model, current *firewalld.Zone) {
 	b.WriteString(dimStyle.Render("i: add interface  s: add source  d: remove selected"))
 }
 
+func renderLogsView(b *strings.Builder, m Model) {
+	zone := m.logZone
+	if zone == "" {
+		zone = "(none)"
+	}
+	b.WriteString(titleStyle.Render("Logs"))
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("Filter: zone " + zone + " (best effort)"))
+	b.WriteString("\n\n")
+
+	if m.logLoading {
+		b.WriteString(dimStyle.Render("Starting log stream..."))
+		return
+	}
+	if m.logErr != nil {
+		b.WriteString(warnStyle.Render("Error: " + m.logErr.Error()))
+		return
+	}
+	if len(m.logLines) == 0 {
+		b.WriteString(dimStyle.Render("  (no log lines yet)"))
+		return
+	}
+	for _, line := range m.logLines {
+		b.WriteString(line + "\n")
+	}
+}
+
 func renderIPSetsView(b *strings.Builder, m Model) {
 	if m.ipsetDenied {
 		b.WriteString(warnStyle.Render("No permission to read IPSets. Run with sudo."))
@@ -984,6 +1013,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("View:\n")
 	b.WriteString("  P           Toggle runtime/permanent\n")
 	b.WriteString("  S           Split diff view\n")
+	b.WriteString("  L           Toggle logs\n")
 	b.WriteString("  r           Refresh data\n\n")
 
 	b.WriteString("Actions:\n")
@@ -1226,7 +1256,7 @@ func renderStatus(m Model) string {
 	if m.panicMode {
 		prefix = "🚨 PANIC | " + prefix
 	}
-	status := fmt.Sprintf("%sMode: %s | 1/2/3/4/5/6: tabs  S: split  %s  Tab: focus  j/k: move  P: toggle  r: refresh  ?: help  q: quit%s%s", prefix, mode, actions, searchHint, templates)
+	status := fmt.Sprintf("%sMode: %s | 1/2/3/4/5/6: tabs  S: split  L: logs  %s  Tab: focus  j/k: move  P: toggle  r: refresh  ?: help  q: quit%s%s", prefix, mode, actions, searchHint, templates)
 	if legend != "" {
 		status = status + "\n" + legend
 	}

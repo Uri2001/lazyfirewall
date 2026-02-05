@@ -114,6 +114,13 @@ type Model struct {
 	availableServices   []string
 	servicesLoading     bool
 	servicesErr         error
+	logMode             bool
+	logLoading          bool
+	logLines            []string
+	logErr              error
+	logZone             string
+	logCancel           func()
+	logLineCh           <-chan string
 
 	detailsMode    bool
 	detailsLoading bool

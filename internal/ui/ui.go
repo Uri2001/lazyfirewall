@@ -14,6 +14,9 @@ func Run(client *firewalld.Client, opts Options) error {
 	program := tea.NewProgram(model, tea.WithAltScreen())
 	m, err := program.Run()
 	if finalModel, ok := m.(Model); ok {
+		if finalModel.logCancel != nil {
+			finalModel.logCancel()
+		}
 		if finalModel.signalsCancel != nil {
 			finalModel.signalsCancel()
 		}

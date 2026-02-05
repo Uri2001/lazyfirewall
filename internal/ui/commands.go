@@ -4,9 +4,11 @@
 package ui
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -140,6 +142,18 @@ type serviceCatalogMsg struct {
 	services []string
 	err      error
 }
+
+type logStreamMsg struct {
+	lines  <-chan string
+	cancel func()
+	err    error
+}
+
+type logLineMsg struct {
+	line string
+}
+
+type logStreamEndMsg struct{}
 
 type recordKind int
 
@@ -579,6 +593,52 @@ func fetchServiceCatalogCmd(client *firewalld.Client) tea.Cmd {
 	return func() tea.Msg {
 		services, err := client.ListServiceNames()
 		return serviceCatalogMsg{services: services, err: err}
+	}
+}
+
+func startLogStreamCmd() tea.Cmd {
+	return func() tea.Msg {
+		cmd := exec.Command("journalctl", "-k", "-f", "-n", "20")
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return logStreamMsg{err: err}
+		}
+		if err := cmd.Start(); err != nil {
+			return logStreamMsg{err: err}
+		}
+
+		lines := make(chan string, 32)
+		go func() {
+			defer close(lines)
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				lines <- scanner.Text()
+			}
+			if err := scanner.Err(); err != nil {
+				lines <- "ERROR: " + err.Error()
+			}
+			if err := cmd.Wait(); err != nil {
+				lines <- "ERROR: " + err.Error()
+			}
+		}()
+
+		cancel := func() {
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+		}
+
+		return logStreamMsg{lines: lines, cancel: cancel}
+	}
+}
+
+func readLogLineCmd(lines <-chan string) tea.Cmd {
+	return func() tea.Msg {
+		line, ok := <-lines
+		if !ok {
+			return logStreamEndMsg{}
+		}
+		return logLineMsg{line: line}
 	}
 }
 
