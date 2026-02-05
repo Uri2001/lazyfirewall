@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -27,11 +28,24 @@ type Backup struct {
 }
 
 func Dir() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := resolveHomeDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(home, backupFolder), nil
+}
+
+func resolveHomeDir() (string, error) {
+	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" && sudoUser != "root" {
+		u, err := user.Lookup(sudoUser)
+		if err == nil && u.HomeDir != "" {
+			return u.HomeDir, nil
+		}
+	}
+	if home := os.Getenv("HOME"); home != "" {
+		return home, nil
+	}
+	return os.UserHomeDir()
 }
 
 func CreateZoneBackup(zone string) (Backup, error) {
