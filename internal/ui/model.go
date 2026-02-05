@@ -93,6 +93,8 @@ type Model struct {
 	backupDone     map[string]bool
 	pendingMutation tea.Cmd
 	notice         string
+	undoStack      []undoAction
+	redoStack      []undoAction
 
 	detailsMode    bool
 	detailsLoading bool

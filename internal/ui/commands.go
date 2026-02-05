@@ -96,6 +96,9 @@ type zoneSettingsMsg struct {
 type mutationMsg struct {
 	zone string
 	err  error
+	action    *undoAction
+	record    recordKind
+	clearRedo bool
 }
 
 type defaultZoneMsg struct {
@@ -107,6 +110,21 @@ type serviceDetailsMsg struct {
 	service string
 	info    *firewalld.ServiceInfo
 	err     error
+}
+
+type recordKind int
+
+const (
+	recordNone recordKind = iota
+	recordUndo
+	recordRedo
+)
+
+type undoAction struct {
+	label string
+	zone  string
+	undo  tea.Cmd
+	redo  tea.Cmd
 }
 
 func fetchZonesCmd(client *firewalld.Client) tea.Cmd {
@@ -283,6 +301,13 @@ func importZoneCmd(client *firewalld.Client, zone, path string) tea.Cmd {
 	}
 }
 
+func mutationCmd(zone string, action *undoAction, record recordKind, clearRedo bool, fn func() error) tea.Cmd {
+	return func() tea.Msg {
+		err := fn()
+		return mutationMsg{zone: zone, err: err, action: action, record: record, clearRedo: clearRedo}
+	}
+}
+
 func fetchZoneSettingsCmd(client *firewalld.Client, zone string, permanent bool) tea.Cmd {
 	return func() tea.Msg {
 		settings, err := client.GetZoneSettings(zone, permanent)
@@ -290,176 +315,136 @@ func fetchZoneSettingsCmd(client *firewalld.Client, zone string, permanent bool)
 	}
 }
 
-func addServiceCmd(client *firewalld.Client, zone, service string, permanent bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
+func addServiceCmd(client *firewalld.Client, zone, service string, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
-			err = client.AddServicePermanent(zone, service)
-		} else {
-			err = client.AddServiceRuntime(zone, service)
+			return client.AddServicePermanent(zone, service)
 		}
-		return mutationMsg{zone: zone, err: err}
-	}
+		return client.AddServiceRuntime(zone, service)
+	})
 }
 
-func removeServiceCmd(client *firewalld.Client, zone, service string, permanent bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
+func removeServiceCmd(client *firewalld.Client, zone, service string, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
-			err = client.RemoveServicePermanent(zone, service)
-		} else {
-			err = client.RemoveServiceRuntime(zone, service)
+			return client.RemoveServicePermanent(zone, service)
 		}
-		return mutationMsg{zone: zone, err: err}
-	}
+		return client.RemoveServiceRuntime(zone, service)
+	})
 }
 
-func addPortCmd(client *firewalld.Client, zone string, port firewalld.Port, permanent bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
+func addPortCmd(client *firewalld.Client, zone string, port firewalld.Port, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
-			err = client.AddPortPermanent(zone, port)
-		} else {
-			err = client.AddPortRuntime(zone, port)
+			return client.AddPortPermanent(zone, port)
 		}
-		return mutationMsg{zone: zone, err: err}
-	}
+		return client.AddPortRuntime(zone, port)
+	})
 }
 
-func removePortCmd(client *firewalld.Client, zone string, port firewalld.Port, permanent bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
+func removePortCmd(client *firewalld.Client, zone string, port firewalld.Port, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
-			err = client.RemovePortPermanent(zone, port)
-		} else {
-			err = client.RemovePortRuntime(zone, port)
+			return client.RemovePortPermanent(zone, port)
 		}
-		return mutationMsg{zone: zone, err: err}
-	}
+		return client.RemovePortRuntime(zone, port)
+	})
 }
 
-func addRichRuleCmd(client *firewalld.Client, zone, rule string, permanent bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
+func addRichRuleCmd(client *firewalld.Client, zone, rule string, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
-			err = client.AddRichRulePermanent(zone, rule)
-		} else {
-			err = client.AddRichRuleRuntime(zone, rule)
+			return client.AddRichRulePermanent(zone, rule)
 		}
-		return mutationMsg{zone: zone, err: err}
-	}
+		return client.AddRichRuleRuntime(zone, rule)
+	})
 }
 
-func removeRichRuleCmd(client *firewalld.Client, zone, rule string, permanent bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
+func removeRichRuleCmd(client *firewalld.Client, zone, rule string, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
-			err = client.RemoveRichRulePermanent(zone, rule)
-		} else {
-			err = client.RemoveRichRuleRuntime(zone, rule)
+			return client.RemoveRichRulePermanent(zone, rule)
 		}
-		return mutationMsg{zone: zone, err: err}
-	}
+		return client.RemoveRichRuleRuntime(zone, rule)
+	})
 }
 
-func updateRichRuleCmd(client *firewalld.Client, zone, oldRule, newRule string, permanent bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
+func updateRichRuleCmd(client *firewalld.Client, zone, oldRule, newRule string, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
-			if err = client.RemoveRichRulePermanent(zone, oldRule); err != nil {
-				return mutationMsg{zone: zone, err: err}
+			if err := client.RemoveRichRulePermanent(zone, oldRule); err != nil {
+				return err
 			}
-			err = client.AddRichRulePermanent(zone, newRule)
-		} else {
-			if err = client.RemoveRichRuleRuntime(zone, oldRule); err != nil {
-				return mutationMsg{zone: zone, err: err}
-			}
-			err = client.AddRichRuleRuntime(zone, newRule)
+			return client.AddRichRulePermanent(zone, newRule)
 		}
-		return mutationMsg{zone: zone, err: err}
-	}
+		if err := client.RemoveRichRuleRuntime(zone, oldRule); err != nil {
+			return err
+		}
+		return client.AddRichRuleRuntime(zone, newRule)
+	})
 }
 
-func addInterfaceCmd(client *firewalld.Client, zone, iface string, permanent bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
+func addInterfaceCmd(client *firewalld.Client, zone, iface string, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
-			err = client.AddInterfacePermanent(zone, iface)
-		} else {
-			err = client.AddInterfaceRuntime(zone, iface)
+			return client.AddInterfacePermanent(zone, iface)
 		}
-		return mutationMsg{zone: zone, err: err}
-	}
+		return client.AddInterfaceRuntime(zone, iface)
+	})
 }
 
-func removeInterfaceCmd(client *firewalld.Client, zone, iface string, permanent bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
+func removeInterfaceCmd(client *firewalld.Client, zone, iface string, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
-			err = client.RemoveInterfacePermanent(zone, iface)
-		} else {
-			err = client.RemoveInterfaceRuntime(zone, iface)
+			return client.RemoveInterfacePermanent(zone, iface)
 		}
-		return mutationMsg{zone: zone, err: err}
-	}
+		return client.RemoveInterfaceRuntime(zone, iface)
+	})
 }
 
-func addSourceCmd(client *firewalld.Client, zone, source string, permanent bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
+func addSourceCmd(client *firewalld.Client, zone, source string, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
-			err = client.AddSourcePermanent(zone, source)
-		} else {
-			err = client.AddSourceRuntime(zone, source)
+			return client.AddSourcePermanent(zone, source)
 		}
-		return mutationMsg{zone: zone, err: err}
-	}
+		return client.AddSourceRuntime(zone, source)
+	})
 }
 
-func removeSourceCmd(client *firewalld.Client, zone, source string, permanent bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
+func removeSourceCmd(client *firewalld.Client, zone, source string, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
-			err = client.RemoveSourcePermanent(zone, source)
-		} else {
-			err = client.RemoveSourceRuntime(zone, source)
+			return client.RemoveSourcePermanent(zone, source)
 		}
-		return mutationMsg{zone: zone, err: err}
-	}
+		return client.RemoveSourceRuntime(zone, source)
+	})
 }
 
-func setMasqueradeCmd(client *firewalld.Client, zone string, enabled, permanent bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
+func setMasqueradeCmd(client *firewalld.Client, zone string, enabled, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
 			if enabled {
-				err = client.EnableMasqueradePermanent(zone)
-			} else {
-				err = client.DisableMasqueradePermanent(zone)
+				return client.EnableMasqueradePermanent(zone)
 			}
-		} else {
-			if enabled {
-				err = client.EnableMasqueradeRuntime(zone)
-			} else {
-				err = client.DisableMasqueradeRuntime(zone)
-			}
+			return client.DisableMasqueradePermanent(zone)
 		}
-		return mutationMsg{zone: zone, err: err}
-	}
+		if enabled {
+			return client.EnableMasqueradeRuntime(zone)
+		}
+		return client.DisableMasqueradeRuntime(zone)
+	})
 }
 
-func commitRuntimeCmd(client *firewalld.Client, zone string) tea.Cmd {
-	return func() tea.Msg {
-		err := client.RuntimeToPermanent()
-		return mutationMsg{zone: zone, err: err}
-	}
+func commitRuntimeCmd(client *firewalld.Client, zone string, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
+		return client.RuntimeToPermanent()
+	})
 }
 
-func reloadCmd(client *firewalld.Client, zone string) tea.Cmd {
-	return func() tea.Msg {
-		err := client.Reload()
-		return mutationMsg{zone: zone, err: err}
-	}
+func reloadCmd(client *firewalld.Client, zone string, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+	return mutationCmd(zone, action, record, clearRedo, func() error {
+		return client.Reload()
+	})
 }
 
 func addZoneCmd(client *firewalld.Client, zone string) tea.Cmd {

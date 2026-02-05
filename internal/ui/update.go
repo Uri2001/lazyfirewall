@@ -326,6 +326,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.loading = true
 			m.err = nil
+			m.notice = ""
 			m.runtimeDenied = false
 			m.permanentDenied = false
 			m.runtimeInvalid = false
@@ -343,9 +344,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.loading = true
 			m.err = nil
+			m.notice = ""
 			m.pendingZone = m.zones[m.selected]
 			zone := m.zones[m.selected]
-			return m, m.maybeBackup(zone, true, commitRuntimeCmd(m.client, zone))
+			return m, m.maybeBackup(zone, true, commitRuntimeCmd(m.client, zone, nil, recordNone, false))
 		case "u":
 			if m.readOnly {
 				m.err = firewalld.ErrPermissionDenied
@@ -356,8 +358,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.loading = true
 			m.err = nil
+			m.notice = ""
 			m.pendingZone = m.zones[m.selected]
-			return m, reloadCmd(m.client, m.zones[m.selected])
+			return m, reloadCmd(m.client, m.zones[m.selected], nil, recordNone, false)
+		case "ctrl+z":
+			if m.readOnly {
+				m.err = firewalld.ErrPermissionDenied
+				return m, nil
+			}
+			if len(m.undoStack) == 0 {
+				m.notice = "Nothing to undo"
+				return m, nil
+			}
+			action := m.undoStack[len(m.undoStack)-1]
+			m.undoStack = m.undoStack[:len(m.undoStack)-1]
+			m.loading = true
+			m.err = nil
+			m.notice = ""
+			m.pendingZone = action.zone
+			return m, action.undo
+		case "ctrl+y":
+			if m.readOnly {
+				m.err = firewalld.ErrPermissionDenied
+				return m, nil
+			}
+			if len(m.redoStack) == 0 {
+				m.notice = "Nothing to redo"
+				return m, nil
+			}
+			action := m.redoStack[len(m.redoStack)-1]
+			m.redoStack = m.redoStack[:len(m.redoStack)-1]
+			m.loading = true
+			m.err = nil
+			m.notice = ""
+			m.pendingZone = action.zone
+			return m, action.redo
 		case "P":
 			m.permanent = !m.permanent
 			if len(m.zones) > 0 && m.selected < len(m.zones) {
@@ -741,8 +776,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err
 			return m, nil
 		}
+		if msg.action != nil {
+			switch msg.record {
+			case recordUndo:
+				m.pushUndo(*msg.action, msg.clearRedo)
+			case recordRedo:
+				m.pushRedo(*msg.action)
+			}
+		}
 		m.loading = true
 		m.err = nil
+		m.notice = ""
 		m.pendingZone = msg.zone
 		m.detailsMode = false
 		m.templateMode = false
@@ -846,6 +890,115 @@ func (m *Model) maybeBackup(zone string, needsBackup bool, cmd tea.Cmd) tea.Cmd 
 	}
 	m.pendingMutation = cmd
 	return createBackupCmd(zone)
+}
+
+const undoLimit = 20
+
+func (m *Model) pushUndo(action undoAction, clearRedo bool) {
+	if len(m.undoStack) >= undoLimit {
+		m.undoStack = m.undoStack[1:]
+	}
+	m.undoStack = append(m.undoStack, action)
+	if clearRedo {
+		m.redoStack = nil
+	}
+}
+
+func (m *Model) pushRedo(action undoAction) {
+	if len(m.redoStack) >= undoLimit {
+		m.redoStack = m.redoStack[1:]
+	}
+	m.redoStack = append(m.redoStack, action)
+}
+
+func (m *Model) actionAddService(zone, service string, permanent bool) tea.Cmd {
+	action := &undoAction{label: "add service " + service, zone: zone}
+	action.undo = removeServiceCmd(m.client, zone, service, permanent, action, recordRedo, false)
+	action.redo = addServiceCmd(m.client, zone, service, permanent, action, recordUndo, false)
+	return addServiceCmd(m.client, zone, service, permanent, action, recordUndo, true)
+}
+
+func (m *Model) actionRemoveService(zone, service string, permanent bool) tea.Cmd {
+	action := &undoAction{label: "remove service " + service, zone: zone}
+	action.undo = addServiceCmd(m.client, zone, service, permanent, action, recordRedo, false)
+	action.redo = removeServiceCmd(m.client, zone, service, permanent, action, recordUndo, false)
+	return removeServiceCmd(m.client, zone, service, permanent, action, recordUndo, true)
+}
+
+func (m *Model) actionAddPort(zone string, port firewalld.Port, permanent bool) tea.Cmd {
+	label := port.Port + "/" + port.Protocol
+	action := &undoAction{label: "add port " + label, zone: zone}
+	action.undo = removePortCmd(m.client, zone, port, permanent, action, recordRedo, false)
+	action.redo = addPortCmd(m.client, zone, port, permanent, action, recordUndo, false)
+	return addPortCmd(m.client, zone, port, permanent, action, recordUndo, true)
+}
+
+func (m *Model) actionRemovePort(zone string, port firewalld.Port, permanent bool) tea.Cmd {
+	label := port.Port + "/" + port.Protocol
+	action := &undoAction{label: "remove port " + label, zone: zone}
+	action.undo = addPortCmd(m.client, zone, port, permanent, action, recordRedo, false)
+	action.redo = removePortCmd(m.client, zone, port, permanent, action, recordUndo, false)
+	return removePortCmd(m.client, zone, port, permanent, action, recordUndo, true)
+}
+
+func (m *Model) actionAddRichRule(zone, rule string, permanent bool) tea.Cmd {
+	action := &undoAction{label: "add rich rule", zone: zone}
+	action.undo = removeRichRuleCmd(m.client, zone, rule, permanent, action, recordRedo, false)
+	action.redo = addRichRuleCmd(m.client, zone, rule, permanent, action, recordUndo, false)
+	return addRichRuleCmd(m.client, zone, rule, permanent, action, recordUndo, true)
+}
+
+func (m *Model) actionRemoveRichRule(zone, rule string, permanent bool) tea.Cmd {
+	action := &undoAction{label: "remove rich rule", zone: zone}
+	action.undo = addRichRuleCmd(m.client, zone, rule, permanent, action, recordRedo, false)
+	action.redo = removeRichRuleCmd(m.client, zone, rule, permanent, action, recordUndo, false)
+	return removeRichRuleCmd(m.client, zone, rule, permanent, action, recordUndo, true)
+}
+
+func (m *Model) actionEditRichRule(zone, oldRule, newRule string, permanent bool) tea.Cmd {
+	action := &undoAction{label: "edit rich rule", zone: zone}
+	action.undo = updateRichRuleCmd(m.client, zone, newRule, oldRule, permanent, action, recordRedo, false)
+	action.redo = updateRichRuleCmd(m.client, zone, oldRule, newRule, permanent, action, recordUndo, false)
+	return updateRichRuleCmd(m.client, zone, oldRule, newRule, permanent, action, recordUndo, true)
+}
+
+func (m *Model) actionAddInterface(zone, iface string, permanent bool) tea.Cmd {
+	action := &undoAction{label: "add interface " + iface, zone: zone}
+	action.undo = removeInterfaceCmd(m.client, zone, iface, permanent, action, recordRedo, false)
+	action.redo = addInterfaceCmd(m.client, zone, iface, permanent, action, recordUndo, false)
+	return addInterfaceCmd(m.client, zone, iface, permanent, action, recordUndo, true)
+}
+
+func (m *Model) actionRemoveInterface(zone, iface string, permanent bool) tea.Cmd {
+	action := &undoAction{label: "remove interface " + iface, zone: zone}
+	action.undo = addInterfaceCmd(m.client, zone, iface, permanent, action, recordRedo, false)
+	action.redo = removeInterfaceCmd(m.client, zone, iface, permanent, action, recordUndo, false)
+	return removeInterfaceCmd(m.client, zone, iface, permanent, action, recordUndo, true)
+}
+
+func (m *Model) actionAddSource(zone, source string, permanent bool) tea.Cmd {
+	action := &undoAction{label: "add source " + source, zone: zone}
+	action.undo = removeSourceCmd(m.client, zone, source, permanent, action, recordRedo, false)
+	action.redo = addSourceCmd(m.client, zone, source, permanent, action, recordUndo, false)
+	return addSourceCmd(m.client, zone, source, permanent, action, recordUndo, true)
+}
+
+func (m *Model) actionRemoveSource(zone, source string, permanent bool) tea.Cmd {
+	action := &undoAction{label: "remove source " + source, zone: zone}
+	action.undo = addSourceCmd(m.client, zone, source, permanent, action, recordRedo, false)
+	action.redo = removeSourceCmd(m.client, zone, source, permanent, action, recordUndo, false)
+	return removeSourceCmd(m.client, zone, source, permanent, action, recordUndo, true)
+}
+
+func (m *Model) actionMasquerade(zone string, enabled, permanent bool) tea.Cmd {
+	state := "off"
+	if enabled {
+		state = "on"
+	}
+	action := &undoAction{label: "masquerade " + state, zone: zone}
+	action.undo = setMasqueradeCmd(m.client, zone, !enabled, permanent, action, recordRedo, false)
+	action.redo = setMasqueradeCmd(m.client, zone, enabled, permanent, action, recordUndo, false)
+	return setMasqueradeCmd(m.client, zone, enabled, permanent, action, recordUndo, true)
 }
 
 func (m *Model) moveMainSelection(delta int) {
@@ -1049,7 +1202,7 @@ func (m *Model) toggleMasquerade() tea.Cmd {
 	}
 	zone := m.zones[m.selected]
 	enabled := !current.Masquerade
-	return m.maybeBackup(zone, true, setMasqueradeCmd(m.client, zone, enabled, m.permanent))
+	return m.maybeBackup(zone, true, m.actionMasquerade(zone, enabled, m.permanent))
 }
 
 func (m *Model) startEditRich() tea.Cmd {
@@ -1175,7 +1328,7 @@ func (m *Model) submitInput() tea.Cmd {
 	case tabServices:
 		m.inputMode = inputNone
 		m.input.Blur()
-		return m.maybeBackup(zone, true, addServiceCmd(m.client, zone, value, m.permanent))
+		return m.maybeBackup(zone, true, m.actionAddService(zone, value, m.permanent))
 	case tabPorts:
 		port, err := parsePortInput(value)
 		if err != nil {
@@ -1184,13 +1337,13 @@ func (m *Model) submitInput() tea.Cmd {
 		}
 		m.inputMode = inputNone
 		m.input.Blur()
-		return m.maybeBackup(zone, true, addPortCmd(m.client, zone, port, m.permanent))
+		return m.maybeBackup(zone, true, m.actionAddPort(zone, port, m.permanent))
 	case tabRich:
 		switch m.inputMode {
 		case inputAddRich:
 			m.inputMode = inputNone
 			m.input.Blur()
-			return m.maybeBackup(zone, true, addRichRuleCmd(m.client, zone, value, m.permanent))
+			return m.maybeBackup(zone, true, m.actionAddRichRule(zone, value, m.permanent))
 		case inputEditRich:
 			oldRule := m.editRichOld
 			m.editRichOld = ""
@@ -1199,7 +1352,7 @@ func (m *Model) submitInput() tea.Cmd {
 			if oldRule == value {
 				return nil
 			}
-			return m.maybeBackup(zone, true, updateRichRuleCmd(m.client, zone, oldRule, value, m.permanent))
+			return m.maybeBackup(zone, true, m.actionEditRichRule(zone, oldRule, value, m.permanent))
 		}
 		return nil
 	case tabNetwork:
@@ -1207,7 +1360,7 @@ func (m *Model) submitInput() tea.Cmd {
 		case inputAddInterface:
 			m.inputMode = inputNone
 			m.input.Blur()
-			return m.maybeBackup(zone, true, addInterfaceCmd(m.client, zone, value, m.permanent))
+			return m.maybeBackup(zone, true, m.actionAddInterface(zone, value, m.permanent))
 		case inputAddSource:
 			if net.ParseIP(value) == nil {
 				if _, _, err := net.ParseCIDR(value); err != nil {
@@ -1217,7 +1370,7 @@ func (m *Model) submitInput() tea.Cmd {
 			}
 			m.inputMode = inputNone
 			m.input.Blur()
-			return m.maybeBackup(zone, true, addSourceCmd(m.client, zone, value, m.permanent))
+			return m.maybeBackup(zone, true, m.actionAddSource(zone, value, m.permanent))
 		}
 		return nil
 	default:
@@ -1242,19 +1395,19 @@ func (m *Model) removeSelected() tea.Cmd {
 			return nil
 		}
 		service := current.Services[m.serviceIndex]
-		return m.maybeBackup(zone, true, removeServiceCmd(m.client, zone, service, m.permanent))
+		return m.maybeBackup(zone, true, m.actionRemoveService(zone, service, m.permanent))
 	case tabPorts:
 		if len(current.Ports) == 0 {
 			return nil
 		}
 		port := current.Ports[m.portIndex]
-		return m.maybeBackup(zone, true, removePortCmd(m.client, zone, port, m.permanent))
+		return m.maybeBackup(zone, true, m.actionRemovePort(zone, port, m.permanent))
 	case tabRich:
 		if len(current.RichRules) == 0 {
 			return nil
 		}
 		rule := current.RichRules[m.richIndex]
-		return m.maybeBackup(zone, true, removeRichRuleCmd(m.client, zone, rule, m.permanent))
+		return m.maybeBackup(zone, true, m.actionRemoveRichRule(zone, rule, m.permanent))
 	case tabNetwork:
 		items := m.networkItems()
 		if len(items) == 0 {
@@ -1266,9 +1419,9 @@ func (m *Model) removeSelected() tea.Cmd {
 		item := items[m.networkIndex]
 		switch item.kind {
 		case "iface":
-			return m.maybeBackup(zone, true, removeInterfaceCmd(m.client, zone, item.value, m.permanent))
+			return m.maybeBackup(zone, true, m.actionRemoveInterface(zone, item.value, m.permanent))
 		case "source":
-			return m.maybeBackup(zone, true, removeSourceCmd(m.client, zone, item.value, m.permanent))
+			return m.maybeBackup(zone, true, m.actionRemoveSource(zone, item.value, m.permanent))
 		default:
 			return nil
 		}
