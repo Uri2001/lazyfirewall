@@ -4,6 +4,7 @@
 package ui
 
 import (
+	"sync"
 	"time"
 
 	"lazyfirewall/internal/backup"
@@ -116,7 +117,7 @@ type Model struct {
 	servicesErr         error
 	logMode             bool
 	logLoading          bool
-	logLines            []string
+	logLinesStore       *logLinesStore
 	logErr              error
 	logZone             string
 	logCancel           func()
@@ -171,7 +172,48 @@ func NewModel(client *firewalld.Client, opts Options) Model {
 		backupDone:      make(map[string]bool),
 		ipsetLoading:    true,
 		servicesLoading: true,
+		logLinesStore:   &logLinesStore{},
 	}
+}
+
+type logLinesStore struct {
+	mu    sync.RWMutex
+	lines []string
+}
+
+func (m *Model) ensureLogLinesStore() *logLinesStore {
+	if m.logLinesStore == nil {
+		m.logLinesStore = &logLinesStore{}
+	}
+	return m.logLinesStore
+}
+
+func (m *Model) appendLogLine(line string) {
+	store := m.ensureLogLinesStore()
+	store.mu.Lock()
+	store.lines = append(store.lines, line)
+	if len(store.lines) > logLimit {
+		store.lines = store.lines[len(store.lines)-logLimit:]
+	}
+	store.mu.Unlock()
+}
+
+func (m Model) getLogLines() []string {
+	if m.logLinesStore == nil {
+		return nil
+	}
+	m.logLinesStore.mu.RLock()
+	defer m.logLinesStore.mu.RUnlock()
+	lines := make([]string, len(m.logLinesStore.lines))
+	copy(lines, m.logLinesStore.lines)
+	return lines
+}
+
+func (m *Model) clearLogLines() {
+	store := m.ensureLogLinesStore()
+	store.mu.Lock()
+	store.lines = nil
+	store.mu.Unlock()
 }
 
 func (m *Model) networkItems() []networkItem {

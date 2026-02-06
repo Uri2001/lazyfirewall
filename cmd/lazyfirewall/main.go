@@ -4,10 +4,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"lazyfirewall/internal/config"
 	"lazyfirewall/internal/firewalld"
@@ -62,14 +65,23 @@ func main() {
 		fmt.Fprintln(os.Stderr, "  sudo systemctl start firewalld")
 		os.Exit(1)
 	}
-	defer client.Close()
+	defer func() {
+		slog.Info("shutting down gracefully")
+		_ = client.Close()
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	opts := ui.Options{
 		DryRun:           dryRun,
 		NoColor:          noColor,
 		DefaultPermanent: cfg.Behavior.DefaultPermanent,
 	}
-	if err := ui.Run(client, opts); err != nil {
+	if err := ui.RunWithContext(ctx, client, opts); err != nil {
+		if err == context.Canceled {
+			return
+		}
 		fmt.Fprintf(os.Stderr, "UI error: %v\n", err)
 		os.Exit(1)
 	}

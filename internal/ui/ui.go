@@ -4,6 +4,7 @@
 package ui
 
 import (
+	"context"
 	"lazyfirewall/internal/firewalld"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,12 +12,12 @@ import (
 	"github.com/muesli/termenv"
 )
 
-func Run(client *firewalld.Client, opts Options) error {
+func RunWithContext(ctx context.Context, client *firewalld.Client, opts Options) error {
 	if opts.NoColor {
 		lipgloss.SetColorProfile(termenv.Ascii)
 	}
 	model := NewModel(client, opts)
-	program := tea.NewProgram(model, tea.WithAltScreen())
+	program := tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx))
 	m, err := program.Run()
 	if finalModel, ok := m.(Model); ok {
 		if finalModel.logCancel != nil {
@@ -27,4 +28,8 @@ func Run(client *firewalld.Client, opts Options) error {
 		}
 	}
 	return err
+}
+
+func Run(client *firewalld.Client, opts Options) error {
+	return RunWithContext(context.Background(), client, opts)
 }

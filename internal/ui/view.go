@@ -813,11 +813,12 @@ func renderLogsView(b *strings.Builder, m Model) {
 		b.WriteString(warnStyle.Render("Error: " + m.logErr.Error()))
 		return
 	}
-	if len(m.logLines) == 0 {
+	lines := m.getLogLines()
+	if len(lines) == 0 {
 		b.WriteString(dimStyle.Render("  (no log lines yet)"))
 		return
 	}
-	for _, line := range m.logLines {
+	for _, line := range lines {
 		b.WriteString(line + "\n")
 	}
 }
