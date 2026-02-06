@@ -10,6 +10,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -21,6 +22,18 @@ type ipsetSettings struct {
 	Type        string
 	Options     map[string]string
 	Entries     []string
+}
+
+const ipsetEntriesCacheTTL = 5 * time.Second
+
+type ipsetEntriesCacheKey struct {
+	name      string
+	permanent bool
+}
+
+type ipsetEntriesCacheEntry struct {
+	entries   []string
+	expiresAt time.Time
 }
 
 func (c *Client) ListIPSets(permanent bool) ([]string, error) {
@@ -73,10 +86,24 @@ func (c *Client) GetIPSetEntries(name string, permanent bool) ([]string, error) 
 	if c.apiVersion != APIv2 {
 		return nil, ErrUnsupportedAPI
 	}
-	if permanent {
-		return c.getIPSetEntriesPermanent(name)
+	if cached, ok := c.getCachedIPSetEntries(name, permanent); ok {
+		return cached, nil
 	}
-	return c.getIPSetEntriesRuntime(name)
+
+	var (
+		entries []string
+		err     error
+	)
+	if permanent {
+		entries, err = c.getIPSetEntriesPermanent(name)
+	} else {
+		entries, err = c.getIPSetEntriesRuntime(name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	c.putIPSetEntriesCache(name, permanent, entries)
+	return entries, nil
 }
 
 func (c *Client) getIPSetEntriesRuntime(name string) ([]string, error) {
@@ -144,6 +171,7 @@ func (c *Client) AddIPSetPermanent(name, ipsetType string) error {
 		}
 		return err
 	}
+	c.invalidateIPSetEntriesCache(name, true)
 	return nil
 }
 
@@ -170,6 +198,8 @@ func (c *Client) RemoveIPSetPermanent(name string) error {
 		}
 		return err
 	}
+	c.invalidateIPSetEntriesCache(name, true)
+	c.invalidateIPSetEntriesCache(name, false)
 	return nil
 }
 
@@ -182,7 +212,11 @@ func (c *Client) AddIPSetEntryRuntime(name, entry string) error {
 	}
 	slog.Info("adding ipset entry (runtime)", "ipset", name, "entry", entry)
 	method := dbusInterface + ".ipset.addEntry"
-	return c.call(method, nil, name, entry)
+	if err := c.call(method, nil, name, entry); err != nil {
+		return err
+	}
+	c.invalidateIPSetEntriesCache(name, false)
+	return nil
 }
 
 func (c *Client) RemoveIPSetEntryRuntime(name, entry string) error {
@@ -194,7 +228,11 @@ func (c *Client) RemoveIPSetEntryRuntime(name, entry string) error {
 	}
 	slog.Info("removing ipset entry (runtime)", "ipset", name, "entry", entry)
 	method := dbusInterface + ".ipset.removeEntry"
-	return c.call(method, nil, name, entry)
+	if err := c.call(method, nil, name, entry); err != nil {
+		return err
+	}
+	c.invalidateIPSetEntriesCache(name, false)
+	return nil
 }
 
 func (c *Client) AddIPSetEntryPermanent(name, entry string) error {
@@ -207,7 +245,11 @@ func (c *Client) AddIPSetEntryPermanent(name, entry string) error {
 	slog.Info("adding ipset entry (permanent)", "ipset", name, "entry", entry)
 	obj := c.configIPSetObject(name)
 	method := dbusInterface + ".config.ipset.addEntry"
-	return c.callObject(obj, method, nil, entry)
+	if err := c.callObject(obj, method, nil, entry); err != nil {
+		return err
+	}
+	c.invalidateIPSetEntriesCache(name, true)
+	return nil
 }
 
 func (c *Client) RemoveIPSetEntryPermanent(name, entry string) error {
@@ -220,7 +262,62 @@ func (c *Client) RemoveIPSetEntryPermanent(name, entry string) error {
 	slog.Info("removing ipset entry (permanent)", "ipset", name, "entry", entry)
 	obj := c.configIPSetObject(name)
 	method := dbusInterface + ".config.ipset.removeEntry"
-	return c.callObject(obj, method, nil, entry)
+	if err := c.callObject(obj, method, nil, entry); err != nil {
+		return err
+	}
+	c.invalidateIPSetEntriesCache(name, true)
+	return nil
+}
+
+func (c *Client) getCachedIPSetEntries(name string, permanent bool) ([]string, bool) {
+	key := ipsetEntriesCacheKey{name: name, permanent: permanent}
+	now := time.Now()
+
+	c.ipsetEntriesMu.RLock()
+	entry, ok := c.ipsetEntriesCache[key]
+	c.ipsetEntriesMu.RUnlock()
+	if !ok {
+		return nil, false
+	}
+	if now.After(entry.expiresAt) {
+		c.ipsetEntriesMu.Lock()
+		delete(c.ipsetEntriesCache, key)
+		c.ipsetEntriesMu.Unlock()
+		return nil, false
+	}
+
+	copied := make([]string, len(entry.entries))
+	copy(copied, entry.entries)
+	return copied, true
+}
+
+func (c *Client) putIPSetEntriesCache(name string, permanent bool, entries []string) {
+	copied := make([]string, len(entries))
+	copy(copied, entries)
+
+	key := ipsetEntriesCacheKey{name: name, permanent: permanent}
+	c.ipsetEntriesMu.Lock()
+	if c.ipsetEntriesCache == nil {
+		c.ipsetEntriesCache = make(map[ipsetEntriesCacheKey]ipsetEntriesCacheEntry)
+	}
+	c.ipsetEntriesCache[key] = ipsetEntriesCacheEntry{
+		entries:   copied,
+		expiresAt: time.Now().Add(ipsetEntriesCacheTTL),
+	}
+	c.ipsetEntriesMu.Unlock()
+}
+
+func (c *Client) invalidateIPSetEntriesCache(name string, permanent bool) {
+	key := ipsetEntriesCacheKey{name: name, permanent: permanent}
+	c.ipsetEntriesMu.Lock()
+	delete(c.ipsetEntriesCache, key)
+	c.ipsetEntriesMu.Unlock()
+}
+
+func (c *Client) invalidateAllIPSetEntriesCache() {
+	c.ipsetEntriesMu.Lock()
+	c.ipsetEntriesCache = make(map[ipsetEntriesCacheKey]ipsetEntriesCacheEntry)
+	c.ipsetEntriesMu.Unlock()
 }
 
 func (c *Client) configIPSetObject(name string) dbus.BusObject {

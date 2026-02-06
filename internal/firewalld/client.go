@@ -4,10 +4,13 @@
 package firewalld
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -18,6 +21,8 @@ const (
 	dbusConfigPath = "/org/fedoraproject/FirewallD1/config"
 	dbusBusPath    = "/org/freedesktop/DBus"
 	dbusBusName    = "org.freedesktop.DBus"
+	dbusTimeout    = 30 * time.Second
+	dbusMinCallGap = 5 * time.Millisecond
 )
 
 type Client struct {
@@ -26,6 +31,12 @@ type Client struct {
 	version    string
 	apiVersion APIVersion
 	readOnly   bool
+
+	ipsetEntriesMu    sync.RWMutex
+	ipsetEntriesCache map[ipsetEntriesCacheKey]ipsetEntriesCacheEntry
+
+	dbusRateMu   sync.Mutex
+	lastDBusCall time.Time
 }
 
 func NewClient() (*Client, error) {
@@ -38,13 +49,16 @@ func NewClient() (*Client, error) {
 
 	obj := conn.Object(dbusInterface, dbusPath)
 	client := &Client{
-		conn: conn,
-		obj:  obj,
+		conn:              conn,
+		obj:               obj,
+		ipsetEntriesCache: make(map[ipsetEntriesCacheKey]ipsetEntriesCacheEntry),
 	}
 
 	busObj := conn.Object(dbusBusName, dbusBusPath)
 	var hasOwner bool
-	if err := busObj.Call("org.freedesktop.DBus.NameHasOwner", 0, dbusInterface).Store(&hasOwner); err != nil {
+	ctx, cancelCtx := context.WithTimeout(context.Background(), dbusTimeout)
+	defer cancelCtx()
+	if err := busObj.CallWithContext(ctx, "org.freedesktop.DBus.NameHasOwner", 0, dbusInterface).Store(&hasOwner); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("check firewalld owner: %w", err)
 	}
@@ -67,7 +81,8 @@ func NewClient() (*Client, error) {
 	}
 
 	if err := client.detectVersion(); err != nil {
-		slog.Warn("version detection failed", "error", err)
+		conn.Close()
+		return nil, fmt.Errorf("firewalld version detection failed: %w (make sure firewalld 1.0+ is running)", err)
 	}
 
 	if err := client.detectPermissions(); err != nil {
@@ -139,9 +154,12 @@ func isPermissionDenied(err error) bool {
 }
 
 func (c *Client) call(method string, out any, args ...any) error {
-	slog.Debug("dbus call", "method", method, "args", args)
+	slog.Debug("dbus call", "method", method, "args", args, "timeout", dbusTimeout)
+	c.waitDBusRateLimit()
 
-	call := c.obj.Call(method, 0, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), dbusTimeout)
+	defer cancel()
+	call := c.obj.CallWithContext(ctx, method, 0, args...)
 	if call.Err != nil {
 		slog.Error("dbus call failed", "method", method, "error", call.Err)
 		return fmt.Errorf("dbus %s: %w", method, call.Err)
@@ -160,9 +178,12 @@ func (c *Client) call(method string, out any, args ...any) error {
 }
 
 func (c *Client) callObject(obj dbus.BusObject, method string, out any, args ...any) error {
-	slog.Debug("dbus call", "method", method, "args", args)
+	slog.Debug("dbus call", "method", method, "args", args, "timeout", dbusTimeout)
+	c.waitDBusRateLimit()
 
-	call := obj.Call(method, 0, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), dbusTimeout)
+	defer cancel()
+	call := obj.CallWithContext(ctx, method, 0, args...)
 	if call.Err != nil {
 		slog.Error("dbus call failed", "method", method, "error", call.Err)
 		return fmt.Errorf("dbus %s: %w", method, call.Err)
@@ -178,6 +199,29 @@ func (c *Client) callObject(obj dbus.BusObject, method string, out any, args ...
 	}
 
 	return nil
+}
+
+func (c *Client) nextDBusDelay(now time.Time) time.Duration {
+	if c.lastDBusCall.IsZero() {
+		return 0
+	}
+	elapsed := now.Sub(c.lastDBusCall)
+	if elapsed >= dbusMinCallGap {
+		return 0
+	}
+	return dbusMinCallGap - elapsed
+}
+
+func (c *Client) waitDBusRateLimit() {
+	c.dbusRateMu.Lock()
+	defer c.dbusRateMu.Unlock()
+
+	now := time.Now()
+	if delay := c.nextDBusDelay(now); delay > 0 {
+		time.Sleep(delay)
+		now = time.Now()
+	}
+	c.lastDBusCall = now
 }
 
 func (c *Client) ListZones() ([]string, error) {

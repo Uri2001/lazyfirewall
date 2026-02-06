@@ -23,22 +23,23 @@ const (
 func (c *Client) detectVersion() error {
 	var v dbus.Variant
 	if err := c.call("org.freedesktop.DBus.Properties.Get", &v, dbusInterface, "version"); err != nil {
-		slog.Warn("failed to detect version, assuming v2", "error", err)
-		c.version = "unknown"
-		c.apiVersion = APIv2
-		return nil
+		return fmt.Errorf("failed to detect firewalld version: %w", err)
 	}
 
 	version, ok := v.Value().(string)
-	if !ok || version == "" {
-		slog.Warn("failed to parse version, assuming v2", "value", fmt.Sprintf("%v", v.Value()))
-		c.version = "unknown"
-		c.apiVersion = APIv2
-		return nil
+	if !ok {
+		return fmt.Errorf("invalid version type: %T (expected string)", v.Value())
+	}
+	if version == "" {
+		return fmt.Errorf("empty version string returned")
 	}
 
 	c.version = version
 	c.apiVersion = parseVersion(version)
+	if c.apiVersion == APIUnknown {
+		slog.Warn("unknown firewalld version, falling back to v2 API", "version", version)
+		c.apiVersion = APIv2
+	}
 
 	slog.Info("firewalld detected", "version", version, "api", c.apiVersion)
 	return nil
@@ -46,12 +47,15 @@ func (c *Client) detectVersion() error {
 
 func parseVersion(version string) APIVersion {
 	parts := strings.Split(version, ".")
-	if len(parts) == 0 {
-		return APIv2
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		return APIUnknown
 	}
 
 	major, err := strconv.Atoi(parts[0])
-	if err != nil || major < 1 {
+	if err != nil {
+		return APIUnknown
+	}
+	if major < 1 {
 		return APIv1
 	}
 

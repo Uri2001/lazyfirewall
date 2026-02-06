@@ -4,8 +4,10 @@
 package firewalld
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -22,7 +24,10 @@ func (c *Client) SubscribeSignals() (<-chan SignalEvent, func(), error) {
 
 	rule := "type='signal',sender='" + dbusInterface + "'"
 	slog.Debug("dbus add match", "rule", rule)
-	if call := c.conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule); call.Err != nil {
+	c.waitDBusRateLimit()
+	ctx, cancelCtx := context.WithTimeout(context.Background(), dbusTimeout)
+	defer cancelCtx()
+	if call := c.conn.BusObject().CallWithContext(ctx, "org.freedesktop.DBus.AddMatch", 0, rule); call.Err != nil {
 		return nil, nil, fmt.Errorf("dbus add match: %w", call.Err)
 	}
 
@@ -52,12 +57,22 @@ func (c *Client) SubscribeSignals() (<-chan SignalEvent, func(), error) {
 		}
 	}()
 
-	cancel := func() {
+	cancel := idempotentCancel(func() {
 		close(done)
 		c.conn.RemoveSignal(raw)
 		slog.Debug("dbus remove match", "rule", rule)
-		_ = c.conn.BusObject().Call("org.freedesktop.DBus.RemoveMatch", 0, rule).Err
-	}
+		c.waitDBusRateLimit()
+		ctx, cancelCtx := context.WithTimeout(context.Background(), dbusTimeout)
+		defer cancelCtx()
+		_ = c.conn.BusObject().CallWithContext(ctx, "org.freedesktop.DBus.RemoveMatch", 0, rule).Err
+	})
 
 	return out, cancel, nil
+}
+
+func idempotentCancel(fn func()) func() {
+	var once sync.Once
+	return func() {
+		once.Do(fn)
+	}
 }

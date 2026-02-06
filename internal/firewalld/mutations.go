@@ -387,7 +387,11 @@ func (c *Client) RuntimeToPermanent() error {
 
 	slog.Info("committing runtime to permanent")
 	method := dbusInterface + ".runtimeToPermanent"
-	return c.call(method, nil)
+	if err := c.call(method, nil); err != nil {
+		return err
+	}
+	c.invalidateAllIPSetEntriesCache()
+	return nil
 }
 
 func (c *Client) Reload() error {
@@ -400,5 +404,9 @@ func (c *Client) Reload() error {
 
 	slog.Info("reloading firewalld")
 	method := dbusInterface + ".reload"
-	return c.call(method, nil)
+	if err := c.call(method, nil); err != nil {
+		return err
+	}
+	c.invalidateAllIPSetEntriesCache()
+	return nil
 }
