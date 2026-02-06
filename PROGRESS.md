@@ -21,7 +21,7 @@
 - [x] Task 10: package-level GoDoc (`doc.go`) for core internal packages
 - [x] Task 11: IPSet entry caching
 - [x] Task 12: D-Bus rate limiting
-- [ ] Task 13: profiling and optimization
+- [x] Task 13: profiling and optimization
 
 ## Notes
 - Added baseline unit tests for critical paths touched in Week 1.
@@ -43,4 +43,8 @@
 - Baseline benchmark snapshot: `BenchmarkParse` ~918 ns/op, 1 alloc/op.
 - Baseline benchmark snapshot: `BenchmarkIsValidZoneNameValid` ~55 ns/op, 0 allocs/op.
 - Baseline benchmark snapshot: `BenchmarkIsValidZoneNameInvalid` ~119 ns/op, 2 allocs/op.
+- Optimized config parser hot path (`parse`) by removing `strings.Split` allocation and adding `parseString` fast-path for plain quoted values.
+- Updated `BenchmarkParse` result after optimization: ~693 ns/op, 0 allocs/op.
+- Optimized zone-name validation error path with sentinel errors (no per-call formatting allocations on invalid input).
+- Updated `BenchmarkIsValidZoneNameInvalid` result after optimization: ~7 ns/op, 0 allocs/op.
 - Linux-tagged test packages are compile-verified in this environment (`go test -c`), while runtime execution requires a Linux host/CI runner.

@@ -92,26 +92,41 @@ func normalizeConfig(cfg *Config) []string {
 
 func parse(raw string, cfg *Config) ([]string, error) {
 	section := ""
-	warnings := make([]string, 0)
-	lines := strings.Split(raw, "\n")
-	for i, line := range lines {
+	var warnings []string
+	lineNo := 0
+	start := 0
+	for {
+		end := start
+		for end < len(raw) && raw[end] != '\n' {
+			end++
+		}
+		lineNo++
+		line := raw[start:end]
 		line = stripComment(line)
 		line = strings.TrimSpace(line)
 		if line == "" {
+			if end == len(raw) {
+				break
+			}
+			start = end + 1
 			continue
 		}
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section = strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
+			if end == len(raw) {
+				break
+			}
+			start = end + 1
 			continue
 		}
 		key, value, ok := strings.Cut(line, "=")
 		if !ok {
-			return warnings, fmt.Errorf("line %d: expected key = value", i+1)
+			return warnings, fmt.Errorf("line %d: expected key = value", lineNo)
 		}
 		key = strings.ToLower(strings.TrimSpace(key))
 		value = strings.TrimSpace(value)
 		if key == "" {
-			return warnings, fmt.Errorf("line %d: empty key", i+1)
+			return warnings, fmt.Errorf("line %d: empty key", lineNo)
 		}
 
 		switch section {
@@ -119,42 +134,47 @@ func parse(raw string, cfg *Config) ([]string, error) {
 			if key == "theme" {
 				val, err := parseString(value)
 				if err != nil {
-					return warnings, fmt.Errorf("line %d: %w", i+1, err)
+					return warnings, fmt.Errorf("line %d: %w", lineNo, err)
 				}
 				cfg.UI.Theme = val
 			} else {
-				warnings = append(warnings, fmt.Sprintf("line %d: unknown ui key %q", i+1, key))
+				warnings = append(warnings, fmt.Sprintf("line %d: unknown ui key %q", lineNo, key))
 			}
 		case "behavior":
 			switch key {
 			case "default_permanent":
 				val, err := parseBool(value)
 				if err != nil {
-					return warnings, fmt.Errorf("line %d: %w", i+1, err)
+					return warnings, fmt.Errorf("line %d: %w", lineNo, err)
 				}
 				cfg.Behavior.DefaultPermanent = val
 			case "auto_refresh_interval":
 				val, err := parseInt(value)
 				if err != nil {
-					return warnings, fmt.Errorf("line %d: %w", i+1, err)
+					return warnings, fmt.Errorf("line %d: %w", lineNo, err)
 				}
 				cfg.Behavior.AutoRefreshSeconds = val
 			default:
-				warnings = append(warnings, fmt.Sprintf("line %d: unknown behavior key %q", i+1, key))
+				warnings = append(warnings, fmt.Sprintf("line %d: unknown behavior key %q", lineNo, key))
 			}
 		case "advanced":
 			if key == "log_level" {
 				val, err := parseString(value)
 				if err != nil {
-					return warnings, fmt.Errorf("line %d: %w", i+1, err)
+					return warnings, fmt.Errorf("line %d: %w", lineNo, err)
 				}
 				cfg.Advanced.LogLevel = val
 			} else {
-				warnings = append(warnings, fmt.Sprintf("line %d: unknown advanced key %q", i+1, key))
+				warnings = append(warnings, fmt.Sprintf("line %d: unknown advanced key %q", lineNo, key))
 			}
 		default:
-			warnings = append(warnings, fmt.Sprintf("line %d: unknown section %q", i+1, section))
+			warnings = append(warnings, fmt.Sprintf("line %d: unknown section %q", lineNo, section))
 		}
+
+		if end == len(raw) {
+			break
+		}
+		start = end + 1
 	}
 	return warnings, nil
 }
@@ -225,6 +245,10 @@ func parseString(value string) (string, error) {
 	}
 	value = strings.TrimSpace(value)
 	if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") && len(value) >= 2 {
+		unquotedFast := value[1 : len(value)-1]
+		if !strings.Contains(unquotedFast, `\`) && !strings.Contains(unquotedFast, `"`) {
+			return unquotedFast, nil
+		}
 		unquoted, err := strconv.Unquote(value)
 		if err != nil {
 			return "", fmt.Errorf("invalid string %q", value)

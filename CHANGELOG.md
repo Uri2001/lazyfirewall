@@ -32,3 +32,5 @@
 - perf: added lightweight D-Bus call rate limiting (`dbusMinCallGap`) in generic call paths and signal subscription match handling.
 - test: added D-Bus rate-limit delay tests in `internal/firewalld/client_test.go`.
 - perf: added baseline benchmarks for config parsing/comment stripping and zone-name validation.
+- perf: optimized config parser line scanning and quoted-string fast-path; `BenchmarkParse` improved to ~693 ns/op with 0 allocs/op.
+- perf: optimized `validation.IsValidZoneName` invalid-path by using sentinel errors; invalid benchmark now ~7 ns/op with 0 allocs/op.
