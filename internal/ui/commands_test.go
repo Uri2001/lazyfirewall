@@ -24,6 +24,7 @@ type fakeRichRuleUpdater struct {
 	addPermanentErr    error
 	removeRuntimeErr   error
 	addRuntimeErr      error
+	addRuntimeErrSeq   []error
 }
 
 func (f *fakeRichRuleUpdater) RemoveRichRulePermanent(zone, rule string) error {
@@ -43,6 +44,11 @@ func (f *fakeRichRuleUpdater) RemoveRichRuleRuntime(zone, rule string) error {
 
 func (f *fakeRichRuleUpdater) AddRichRuleRuntime(zone, rule string) error {
 	f.addRuntimeCalls++
+	if len(f.addRuntimeErrSeq) > 0 {
+		err := f.addRuntimeErrSeq[0]
+		f.addRuntimeErrSeq = f.addRuntimeErrSeq[1:]
+		return err
+	}
 	return f.addRuntimeErr
 }
 
@@ -144,7 +150,8 @@ func TestUpdateRichRuleCmdUsesRuntimeMethods(t *testing.T) {
 
 func TestUpdateRichRuleCmdRollbackError(t *testing.T) {
 	client := &fakeRichRuleUpdater{
-		addRuntimeErr: errors.New("invalid syntax"),
+		// 1st AddRichRuleRuntime call fails (new rule), 2nd succeeds (rollback).
+		addRuntimeErrSeq: []error{errors.New("invalid syntax"), nil},
 	}
 	cmd := updateRichRuleCmd(client, "public", "old", "new", false, nil, recordNone, false)
 	msg := cmd()
