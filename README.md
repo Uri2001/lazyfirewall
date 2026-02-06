@@ -6,10 +6,31 @@ LazyFirewall is a terminal UI for managing `firewalld` using its D‑Bus API (no
 - Linux with `firewalld` 1.0+
 - Go 1.22+
 
-## Build
+## Build (linux/amd64)
 ```bash
 make build
 ```
+
+Build with explicit version metadata:
+```bash
+make build VERSION=v1.2.3 COMMIT=$(git rev-parse --short HEAD) DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+```
+
+Show embedded version:
+```bash
+./bin/lazyfirewall --version
+```
+
+## Release artifacts (local)
+Build release archives for Linux targets `amd64`, `arm64`, `arm`, `386`:
+```bash
+make release VERSION=v1.2.3
+```
+
+Output is generated in `dist/`:
+- `lazyfirewall_<version>_linux_<arch>.tar.gz`
+- `checksums.sha256`
+- `checksums.sha512`
 
 ## Run
 ```bash
@@ -146,3 +167,14 @@ Backups are created automatically before the first mutation per zone, and can al
 - When running with `sudo`, the default config path is `/root/.config/lazyfirewall/config.toml`.  
   Use `LAZYFIREWALL_CONFIG` to force a config from your user home.
 - Logs default to `~/.config/lazyfirewall/lazyfirewall.log` unless `LAZYFIREWALL_LOG_STDERR=1`.
+
+## CI/CD
+- CI workflow (`.github/workflows/ci.yml`) runs:
+  - tests
+  - linters (`gofmt`, `go vet`)
+  - security checks (`govulncheck`, advisory `gosec`, dependency review on PRs)
+  - build matrix for Linux: `amd64`, `arm64`, `arm`, `386`
+- Release workflow (`.github/workflows/release.yml`):
+  - triggers automatically on tags `v*`
+  - builds Linux artifacts for `amd64`, `arm64`, `arm`, `386`
+  - publishes GitHub Release with SHA256/SHA512 checksum files

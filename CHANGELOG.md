@@ -34,3 +34,6 @@
 - perf: added baseline benchmarks for config parsing/comment stripping and zone-name validation.
 - perf: optimized config parser line scanning and quoted-string fast-path; `BenchmarkParse` improved to ~693 ns/op with 0 allocs/op.
 - perf: optimized `validation.IsValidZoneName` invalid-path by using sentinel errors; invalid benchmark now ~7 ns/op with 0 allocs/op.
+- build: added ldflags-based version metadata wiring in `Makefile` and release build script.
+- ci: added GitHub Actions CI workflow with tests, linters, security checks, and linux multi-arch build matrix.
+- release: added automated GitHub release workflow for tags `v*` with linux artifacts (`amd64`, `arm64`, `arm`, `386`) and SHA256/SHA512 checksums.

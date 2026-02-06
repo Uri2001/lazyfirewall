@@ -47,4 +47,7 @@
 - Updated `BenchmarkParse` result after optimization: ~693 ns/op, 0 allocs/op.
 - Optimized zone-name validation error path with sentinel errors (no per-call formatting allocations on invalid input).
 - Updated `BenchmarkIsValidZoneNameInvalid` result after optimization: ~7 ns/op, 0 allocs/op.
+- Added release build script (`scripts/build-release.sh`) with ldflags version injection and checksum generation (SHA256/SHA512).
+- Added GitHub Actions CI (`.github/workflows/ci.yml`) with tests, linting, security checks, and Linux multi-arch build verification.
+- Added automated release workflow (`.github/workflows/release.yml`) for tag-driven GitHub releases and artifact publishing.
 - Linux-tagged test packages are compile-verified in this environment (`go test -c`), while runtime execution requires a Linux host/CI runner.
