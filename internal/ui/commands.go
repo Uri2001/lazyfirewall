@@ -7,14 +7,17 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"lazyfirewall/internal/backup"
 	"lazyfirewall/internal/firewalld"
+	"lazyfirewall/internal/validation"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -163,6 +166,8 @@ const (
 	recordRedo
 )
 
+const maxImportFileSize = 10 << 20 // 10 MiB
+
 type undoAction struct {
 	label string
 	zone  string
@@ -274,11 +279,51 @@ func previewBackupCmd(zone, path string, current *firewalld.Zone) tea.Cmd {
 
 func restoreBackupCmd(client *firewalld.Client, zone string, item backup.Backup) tea.Cmd {
 	return func() tea.Msg {
+		if err := validation.IsValidZoneName(zone); err != nil {
+			return backupRestoreMsg{zone: zone, err: fmt.Errorf("invalid zone name: %w", err)}
+		}
+
+		slog.Info("restoring backup", "zone", zone, "backup", item.Path)
 		if err := backup.RestoreZoneBackup(zone, item); err != nil {
-			return backupRestoreMsg{zone: zone, err: err}
+			return backupRestoreMsg{zone: zone, err: fmt.Errorf("restore failed: %w", err)}
 		}
 		if err := client.Reload(); err != nil {
-			return backupRestoreMsg{zone: zone, err: err}
+			slog.Error("reload failed after restore, attempting rollback", "zone", zone, "error", err)
+
+			preRestorePath, pathErr := backup.GetPreRestoreBackupPath(zone)
+			if pathErr != nil {
+				return backupRestoreMsg{
+					zone: zone,
+					err:  fmt.Errorf("restore failed and rollback path lookup failed: %w (path error: %v)", err, pathErr),
+				}
+			}
+			if preRestorePath == "" {
+				return backupRestoreMsg{zone: zone, err: fmt.Errorf("restore failed: %w", err)}
+			}
+
+			destPath, destErr := backup.ZoneDestinationPath(zone)
+			if destErr != nil {
+				return backupRestoreMsg{
+					zone: zone,
+					err:  fmt.Errorf("restore failed and rollback destination failed: %w (destination error: %v)", err, destErr),
+				}
+			}
+			if rollbackErr := backup.CopyFile(preRestorePath, destPath); rollbackErr != nil {
+				slog.Error("critical rollback failure", "zone", zone, "error", rollbackErr)
+				return backupRestoreMsg{
+					zone: zone,
+					err:  fmt.Errorf("restore failed and rollback failed: %w (rollback: %v)", err, rollbackErr),
+				}
+			}
+
+			if reloadErr := client.Reload(); reloadErr != nil {
+				slog.Error("reload failed after rollback", "zone", zone, "error", reloadErr)
+			}
+			return backupRestoreMsg{zone: zone, err: fmt.Errorf("restore failed, previous state restored: %w", err)}
+		}
+
+		if cleanupErr := backup.CleanupPreRestoreBackup(zone); cleanupErr != nil {
+			slog.Warn("failed to cleanup pre-restore backup", "zone", zone, "error", cleanupErr)
 		}
 		return backupRestoreMsg{zone: zone, err: nil}
 	}
@@ -315,9 +360,20 @@ func exportZoneCmd(path string, data *firewalld.Zone) tea.Cmd {
 
 func importZoneCmd(client *firewalld.Client, zone, path string) tea.Cmd {
 	return func() tea.Msg {
+		if err := validation.IsValidZoneName(zone); err != nil {
+			return importMsg{zone: zone, err: fmt.Errorf("invalid zone name: %w", err)}
+		}
+
+		info, err := os.Stat(path)
+		if err != nil {
+			return importMsg{zone: zone, err: err}
+		}
+		if info.Size() > maxImportFileSize {
+			return importMsg{zone: zone, err: fmt.Errorf("file too large: %d bytes (max %d)", info.Size(), maxImportFileSize)}
+		}
+
 		ext := strings.ToLower(filepath.Ext(path))
 		var z *firewalld.Zone
-		var err error
 		switch ext {
 		case ".json":
 			data, err := os.ReadFile(path)
@@ -326,26 +382,64 @@ func importZoneCmd(client *firewalld.Client, zone, path string) tea.Cmd {
 			}
 			var parsed firewalld.Zone
 			if err := json.Unmarshal(data, &parsed); err != nil {
-				return importMsg{zone: zone, err: err}
+				return importMsg{zone: zone, err: fmt.Errorf("invalid JSON: %w", err)}
 			}
 			z = &parsed
 		case ".xml":
 			z, err = backup.ParseZoneXMLFile(path)
 			if err != nil {
-				return importMsg{zone: zone, err: err}
+				return importMsg{zone: zone, err: fmt.Errorf("invalid XML: %w", err)}
 			}
 		default:
-			return importMsg{zone: zone, err: fmt.Errorf("unsupported import format: %s", ext)}
+			return importMsg{zone: zone, err: fmt.Errorf("unsupported import format: %s (use .json or .xml)", ext)}
 		}
 		if z == nil {
 			return importMsg{zone: zone, err: fmt.Errorf("no data loaded from file")}
 		}
 		z.Name = zone
-		if _, err := backup.WriteZoneXMLFile(zone, z); err != nil {
+
+		destPath, err := backup.ZoneDestinationPath(zone)
+		if err != nil {
 			return importMsg{zone: zone, err: err}
 		}
-		if err := client.Reload(); err != nil {
+		preImportBackup := destPath + ".pre-import." + strconv.FormatInt(time.Now().UnixNano(), 10)
+		hadOriginal := false
+		if _, statErr := os.Stat(destPath); statErr == nil {
+			hadOriginal = true
+			if err := backup.CopyFile(destPath, preImportBackup); err != nil {
+				return importMsg{zone: zone, err: fmt.Errorf("failed to create pre-import backup: %w", err)}
+			}
+		} else if !os.IsNotExist(statErr) {
+			return importMsg{zone: zone, err: statErr}
+		}
+
+		if _, err := backup.WriteZoneXMLFile(zone, z); err != nil {
+			if hadOriginal {
+				_ = os.Remove(preImportBackup)
+			}
 			return importMsg{zone: zone, err: err}
+		}
+
+		if err := client.Reload(); err != nil {
+			slog.Error("reload failed after import, attempting rollback", "zone", zone, "error", err)
+
+			if hadOriginal {
+				if rollbackErr := backup.CopyFile(preImportBackup, destPath); rollbackErr != nil {
+					slog.Error("critical import rollback failure", "zone", zone, "error", rollbackErr)
+					return importMsg{
+						zone: zone,
+						err:  fmt.Errorf("import failed and rollback failed: %w (rollback: %v)", err, rollbackErr),
+					}
+				}
+			} else {
+				_ = os.Remove(destPath)
+			}
+			_ = client.Reload()
+			return importMsg{zone: zone, err: fmt.Errorf("import failed, previous state restored: %w", err)}
+		}
+
+		if hadOriginal {
+			_ = os.Remove(preImportBackup)
 		}
 		return importMsg{zone: zone, err: nil}
 	}
@@ -471,18 +565,42 @@ func removeRichRuleCmd(client *firewalld.Client, zone, rule string, permanent bo
 	})
 }
 
-func updateRichRuleCmd(client *firewalld.Client, zone, oldRule, newRule string, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
+func updateRichRuleTransaction(removeOld, addNew, restoreOld func() error) error {
+	if err := removeOld(); err != nil {
+		return fmt.Errorf("failed to remove old rule: %w", err)
+	}
+	if err := addNew(); err != nil {
+		slog.Error("failed to add new rule, attempting rollback", "error", err)
+		if rollbackErr := restoreOld(); rollbackErr != nil {
+			slog.Error("critical rollback failure", "error", rollbackErr)
+			return fmt.Errorf("update failed and rollback failed: %w (rollback: %v)", err, rollbackErr)
+		}
+		return fmt.Errorf("failed to add new rule (old rule restored): %w", err)
+	}
+	return nil
+}
+
+type richRuleUpdater interface {
+	RemoveRichRulePermanent(zone, rule string) error
+	AddRichRulePermanent(zone, rule string) error
+	RemoveRichRuleRuntime(zone, rule string) error
+	AddRichRuleRuntime(zone, rule string) error
+}
+
+func updateRichRuleCmd(client richRuleUpdater, zone, oldRule, newRule string, permanent bool, action *undoAction, record recordKind, clearRedo bool) tea.Cmd {
 	return mutationCmd(zone, action, record, clearRedo, func() error {
 		if permanent {
-			if err := client.RemoveRichRulePermanent(zone, oldRule); err != nil {
-				return err
-			}
-			return client.AddRichRulePermanent(zone, newRule)
+			return updateRichRuleTransaction(
+				func() error { return client.RemoveRichRulePermanent(zone, oldRule) },
+				func() error { return client.AddRichRulePermanent(zone, newRule) },
+				func() error { return client.AddRichRulePermanent(zone, oldRule) },
+			)
 		}
-		if err := client.RemoveRichRuleRuntime(zone, oldRule); err != nil {
-			return err
-		}
-		return client.AddRichRuleRuntime(zone, newRule)
+		return updateRichRuleTransaction(
+			func() error { return client.RemoveRichRuleRuntime(zone, oldRule) },
+			func() error { return client.AddRichRuleRuntime(zone, newRule) },
+			func() error { return client.AddRichRuleRuntime(zone, oldRule) },
+		)
 	})
 }
 
@@ -551,6 +669,9 @@ func reloadCmd(client *firewalld.Client, zone string, action *undoAction, record
 
 func addZoneCmd(client *firewalld.Client, zone string) tea.Cmd {
 	return func() tea.Msg {
+		if err := validation.IsValidZoneName(zone); err != nil {
+			return zonesMsg{err: fmt.Errorf("invalid zone name: %w", err)}
+		}
 		if err := client.AddZonePermanent(zone); err != nil {
 			return zonesMsg{err: err}
 		}
@@ -561,6 +682,9 @@ func addZoneCmd(client *firewalld.Client, zone string) tea.Cmd {
 
 func removeZoneCmd(client *firewalld.Client, zone string) tea.Cmd {
 	return func() tea.Msg {
+		if err := validation.IsValidZoneName(zone); err != nil {
+			return zonesMsg{err: fmt.Errorf("invalid zone name: %w", err)}
+		}
 		if err := client.RemoveZonePermanent(zone); err != nil {
 			return zonesMsg{err: err}
 		}

@@ -12,15 +12,23 @@ import (
 	"os/user"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"lazyfirewall/internal/validation"
 )
 
 const (
 	timeFormat   = "20060102-150405"
 	keepBackups  = 10
 	backupFolder = ".config/lazyfirewall/backups"
+)
+
+var (
+	zoneConfigDir = "/etc/firewalld/zones"
+	zoneSystemDir = "/usr/lib/firewalld/zones"
 )
 
 type Backup struct {
@@ -57,6 +65,10 @@ func CreateZoneBackup(zone string) (Backup, error) {
 }
 
 func CreateZoneBackupWithDescription(zone, description string) (Backup, error) {
+	if err := validation.IsValidZoneName(zone); err != nil {
+		return Backup{}, fmt.Errorf("invalid zone name: %w", err)
+	}
+
 	src, err := zoneFilePath(zone)
 	if err != nil {
 		return Backup{}, err
@@ -159,24 +171,99 @@ func RestoreZoneBackup(zone string, b Backup) error {
 	if b.Path == "" {
 		return fmt.Errorf("backup path is empty")
 	}
-	dir := filepath.Join("/etc/firewalld/zones")
+	if err := validation.IsValidZoneName(zone); err != nil {
+		return fmt.Errorf("invalid zone name: %w", err)
+	}
+
+	dir := zoneConfigDir
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	dest := filepath.Join(dir, zone+".xml")
-	return copyFile(b.Path, dest)
+
+	timestamp := strconv.FormatInt(time.Now().UnixNano(), 10)
+	tempDest := dest + ".tmp." + timestamp
+	preRestoreBackup := dest + ".pre-restore." + timestamp
+
+	defer func() {
+		_ = os.Remove(tempDest)
+	}()
+
+	if fileExists(dest) {
+		if err := copyFile(dest, preRestoreBackup); err != nil {
+			return fmt.Errorf("failed to create pre-restore backup: %w", err)
+		}
+	}
+
+	if err := copyFile(b.Path, tempDest); err != nil {
+		if fileExists(preRestoreBackup) {
+			_ = os.Remove(preRestoreBackup)
+		}
+		return fmt.Errorf("failed to copy backup to temp file: %w", err)
+	}
+
+	if err := os.Rename(tempDest, dest); err != nil {
+		_ = os.Remove(tempDest)
+		if fileExists(preRestoreBackup) {
+			_ = os.Remove(preRestoreBackup)
+		}
+		return fmt.Errorf("failed to rename temp file: %w", err)
+	}
+
+	slog.Info("zone file restored", "zone", zone, "from", b.Path, "to", dest)
+	return nil
 }
 
 func zoneFilePath(zone string) (string, error) {
-	etc := filepath.Join("/etc/firewalld/zones", zone+".xml")
+	if err := validation.IsValidZoneName(zone); err != nil {
+		return "", fmt.Errorf("invalid zone name: %w", err)
+	}
+
+	etc := filepath.Join(zoneConfigDir, zone+".xml")
 	if fileExists(etc) {
 		return etc, nil
 	}
-	usr := filepath.Join("/usr/lib/firewalld/zones", zone+".xml")
+	usr := filepath.Join(zoneSystemDir, zone+".xml")
 	if fileExists(usr) {
 		return usr, nil
 	}
 	return "", os.ErrNotExist
+}
+
+func ZoneDestinationPath(zone string) (string, error) {
+	if err := validation.IsValidZoneName(zone); err != nil {
+		return "", fmt.Errorf("invalid zone name: %w", err)
+	}
+	return filepath.Join(zoneConfigDir, zone+".xml"), nil
+}
+
+func GetPreRestoreBackupPath(zone string) (string, error) {
+	if err := validation.IsValidZoneName(zone); err != nil {
+		return "", fmt.Errorf("invalid zone name: %w", err)
+	}
+
+	pattern := filepath.Join(zoneConfigDir, zone+".xml.pre-restore.*")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return "", err
+	}
+	if len(matches) == 0 {
+		return "", nil
+	}
+	sort.Strings(matches)
+	return matches[len(matches)-1], nil
+}
+
+func CleanupPreRestoreBackup(zone string) error {
+	path, err := GetPreRestoreBackupPath(zone)
+	if err != nil || path == "" {
+		return err
+	}
+	return os.Remove(path)
+}
+
+func CopyFile(src, dest string) error {
+	return copyFile(src, dest)
 }
 
 func fileExists(path string) bool {

@@ -4,13 +4,22 @@
 package backup
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"lazyfirewall/internal/firewalld"
+	"lazyfirewall/internal/validation"
+)
+
+const (
+	maxParsedXMLSize = 1 << 20  // 1 MiB
+	maxXMLFileSize   = 10 << 20 // 10 MiB
 )
 
 type zoneXML struct {
@@ -51,6 +60,14 @@ type icmpXML struct {
 }
 
 func ParseZoneXMLFile(path string) (*firewalld.Zone, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > maxXMLFileSize {
+		return nil, fmt.Errorf("XML file too large: %d bytes (max %d)", info.Size(), maxXMLFileSize)
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -59,9 +76,16 @@ func ParseZoneXMLFile(path string) (*firewalld.Zone, error) {
 }
 
 func ParseZoneXML(data []byte) (*firewalld.Zone, error) {
+	if len(data) > maxParsedXMLSize {
+		return nil, fmt.Errorf("XML payload too large: %d bytes (max %d)", len(data), maxParsedXMLSize)
+	}
+
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	decoder.Strict = true
+
 	var zx zoneXML
-	if err := xml.Unmarshal(data, &zx); err != nil {
-		return nil, err
+	if err := decoder.Decode(&zx); err != nil {
+		return nil, fmt.Errorf("failed to parse zone XML: %w", err)
 	}
 
 	z := &firewalld.Zone{
@@ -162,19 +186,28 @@ func MarshalZoneXML(z *firewalld.Zone) ([]byte, error) {
 }
 
 func WriteZoneXMLFile(zone string, z *firewalld.Zone) (string, error) {
-	if zone == "" {
-		return "", fmt.Errorf("zone name is empty")
+	if err := validation.IsValidZoneName(zone); err != nil {
+		return "", fmt.Errorf("invalid zone name: %w", err)
 	}
 	data, err := MarshalZoneXML(z)
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join("/etc/firewalld/zones")
+	dir := zoneConfigDir
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
 	dest := filepath.Join(dir, zone+".xml")
-	if err := os.WriteFile(dest, data, 0o644); err != nil {
+
+	tmp := dest + ".tmp." + strconv.FormatInt(time.Now().UnixNano(), 10)
+	defer func() {
+		_ = os.Remove(tmp)
+	}()
+
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmp, dest); err != nil {
 		return "", err
 	}
 	return dest, nil
