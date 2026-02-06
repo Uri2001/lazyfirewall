@@ -195,9 +195,27 @@ func sudoConfigPath(primary string) (string, bool) {
 }
 
 func stripComment(line string) string {
-	if idx := strings.Index(line, "#"); idx >= 0 {
-		return line[:idx]
+	inQuotes := false
+	escaped := false
+
+	for i, r := range line {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if inQuotes && r == '\\' {
+			escaped = true
+			continue
+		}
+		if r == '"' {
+			inQuotes = !inQuotes
+			continue
+		}
+		if r == '#' && !inQuotes {
+			return line[:i]
+		}
 	}
+
 	return line
 }
 
