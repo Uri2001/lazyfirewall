@@ -38,13 +38,13 @@ func buildBackupPreview(path string, current *firewalld.Zone) (string, error) {
 	lines = append(lines, fmt.Sprintf("Sources: +%d  -%d", add, del))
 
 	if current.Masquerade != backupZone.Masquerade {
-		lines = append(lines, fmt.Sprintf("Masquerade: %s → %s", onOff(current.Masquerade), onOff(backupZone.Masquerade)))
+		lines = append(lines, fmt.Sprintf("Masquerade: %s -> %s", onOff(current.Masquerade), onOff(backupZone.Masquerade)))
 	}
 	if current.Target != backupZone.Target && (current.Target != "" || backupZone.Target != "") {
-		lines = append(lines, fmt.Sprintf("Target: %s → %s", emptyAsNone(current.Target), emptyAsNone(backupZone.Target)))
+		lines = append(lines, fmt.Sprintf("Target: %s -> %s", emptyAsNone(current.Target), emptyAsNone(backupZone.Target)))
 	}
 	if current.Short != backupZone.Short && (current.Short != "" || backupZone.Short != "") {
-		lines = append(lines, fmt.Sprintf("Short: %s → %s", emptyAsNone(current.Short), emptyAsNone(backupZone.Short)))
+		lines = append(lines, fmt.Sprintf("Short: %s -> %s", emptyAsNone(current.Short), emptyAsNone(backupZone.Short)))
 	}
 
 	return strings.Join(lines, "\n"), nil

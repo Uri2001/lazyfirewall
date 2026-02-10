@@ -256,7 +256,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			zone := m.zones[m.selected]
 			if m.dryRun {
-				m.setDryRunNotice(fmt.Sprintf("commit runtime → permanent for zone %s", zone))
+				m.setDryRunNotice(fmt.Sprintf("commit runtime -> permanent for zone %s", zone))
 				return m, nil
 			}
 			m.loading = true

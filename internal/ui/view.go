@@ -22,7 +22,6 @@ var (
 	tabInactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Background(lipgloss.Color("237")).Padding(0, 1)
 	inputStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("229"))
 	matchStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
-	activeStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
 	statusStyle      = lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("250")).Padding(0, 1)
 	sidebarStyle     = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
 	mainStyle        = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
@@ -77,17 +76,16 @@ func renderSidebar(m Model, width int) string {
 		if zone == m.defaultZone {
 			name = name + " [D]"
 		}
-		dot := "  "
 		if active {
-			dot = activeStyle.Render("●") + " "
+			name = name + " [A]"
 		}
-		line := dot + name
+		line := name
 		if i == m.selected {
-			prefix = "› "
+			prefix = "> "
 			if m.focus == focusZones {
-				line = dot + selectedStyle.Render(name)
+				line = selectedStyle.Render(name)
 			} else {
-				line = dot + titleStyle.Render(name)
+				line = titleStyle.Render(name)
 			}
 		}
 		b.WriteString(prefix + line + "\n")
@@ -127,11 +125,11 @@ func renderMain(m Model, width int) string {
 	}
 
 	if m.readOnly {
-		b.WriteString(warnStyle.Render("🔒 Read-Only Mode - Run with sudo for editing"))
+		b.WriteString(warnStyle.Render("[RO] Read-Only Mode - Run with sudo for editing"))
 		b.WriteString("\n\n")
 	}
 	if m.panicMode {
-		b.WriteString(panicStyle.Render("⚠ PANIC MODE ACTIVE - ALL CONNECTIONS DROPPED"))
+		b.WriteString(panicStyle.Render("[PANIC] MODE ACTIVE - ALL CONNECTIONS DROPPED"))
 		b.WriteString("\n\n")
 	}
 
@@ -669,7 +667,7 @@ func renderServicesList(b *strings.Builder, m Model, current *firewalld.Zone) {
 			}
 		}
 		if i == m.serviceIndex {
-			prefix = "› "
+			prefix = "> "
 			if m.focus == focusMain {
 				line = selectedStyle.Render(line)
 			} else {
@@ -697,7 +695,7 @@ func renderPortsList(b *strings.Builder, m Model, current *firewalld.Zone) {
 			}
 		}
 		if i == m.portIndex {
-			prefix = "› "
+			prefix = "> "
 			if m.focus == focusMain {
 				line = selectedStyle.Render(line)
 			} else {
@@ -730,7 +728,7 @@ func renderRichRulesList(b *strings.Builder, m Model, current *firewalld.Zone) {
 			}
 		}
 		if i == m.richIndex {
-			prefix = "› "
+			prefix = "> "
 			if m.focus == focusMain {
 				line = selectedStyle.Render(line)
 			} else {
@@ -758,7 +756,7 @@ func renderNetworkView(b *strings.Builder, m Model, current *firewalld.Zone) {
 			line := highlightMatch(i, m.searchQuery)
 			prefix := "  "
 			if index == m.networkIndex {
-				prefix = "› "
+				prefix = "> "
 				if m.focus == focusMain {
 					line = selectedStyle.Render(line)
 				} else {
@@ -779,7 +777,7 @@ func renderNetworkView(b *strings.Builder, m Model, current *firewalld.Zone) {
 			line := highlightMatch(s, m.searchQuery)
 			prefix := "  "
 			if index == m.networkIndex {
-				prefix = "› "
+				prefix = "> "
 				if m.focus == focusMain {
 					line = selectedStyle.Render(line)
 				} else {
@@ -850,7 +848,7 @@ func renderIPSetsView(b *strings.Builder, m Model) {
 			line = line + dimStyle.Render(" [Z]")
 		}
 		if i == m.ipsetIndex {
-			prefix = "› "
+			prefix = "> "
 			if m.focus == focusMain {
 				line = selectedStyle.Render(line)
 			} else {
@@ -1030,7 +1028,7 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  m           Toggle masquerade\n")
 	b.WriteString("  i           Add interface\n")
 	b.WriteString("  s           Add source\n")
-	b.WriteString("  c           Commit runtime → permanent\n")
+	b.WriteString("  c           Commit runtime -> permanent\n")
 	b.WriteString("  u           Reload (revert runtime)\n")
 	b.WriteString("  t           Apply template\n")
 	b.WriteString("  Alt+P       Panic mode (type YES)\n")
@@ -1051,7 +1049,8 @@ func renderHelp(b *strings.Builder, m Model) {
 	b.WriteString("  n / N       Next/prev match\n\n")
 
 	b.WriteString("Indicators:\n")
-	b.WriteString("  ●           Active zone\n")
+	b.WriteString("  [A]         Active zone\n")
+	b.WriteString("  [D]         Default zone\n")
 	b.WriteString("  *           Runtime-only item\n")
 	b.WriteString("  ~           Modified item\n")
 	b.WriteString("  + / -       Added/removed (split view)\n\n")
@@ -1067,7 +1066,7 @@ func renderTemplates(b *strings.Builder, m Model) {
 		prefix := "  "
 		line := tpl.Name
 		if i == m.templateIndex {
-			prefix = "› "
+			prefix = "> "
 			line = selectedStyle.Render(line)
 		}
 		b.WriteString(prefix + line + "\n")
@@ -1118,7 +1117,7 @@ func renderBackupView(b *strings.Builder, m Model) {
 				line = line + "  " + item.Description
 			}
 			if i == m.backupIndex {
-				prefix = "› "
+				prefix = "> "
 				line = selectedStyle.Render(line)
 			}
 			b.WriteString(prefix + line + "\n")
@@ -1248,17 +1247,17 @@ func renderStatus(m Model) string {
 	templates := "  t: templates"
 	if m.readOnly {
 		actions = dimStyle.Render(actions)
-		templates = "  " + dimStyle.Render("t: templates 🔒")
+		templates = "  " + dimStyle.Render("t: templates [RO]")
 	}
 	prefix := ""
 	if m.readOnly {
-		prefix = "🔒 Read-Only | "
+		prefix = "[RO] | "
 	}
 	if m.dryRun {
-		prefix = "🧪 Dry-Run | " + prefix
+		prefix = "[DRY] | " + prefix
 	}
 	if m.panicMode {
-		prefix = "🚨 PANIC | " + prefix
+		prefix = "[PANIC] | " + prefix
 	}
 	status := fmt.Sprintf("%sMode: %s | 1/2/3/4/5/6: tabs  S: split  L: logs  %s  Tab: focus  j/k: move  P: toggle  r: refresh  ?: help  q: quit%s%s", prefix, mode, actions, searchHint, templates)
 	if legend != "" {
