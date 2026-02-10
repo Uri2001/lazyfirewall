@@ -23,8 +23,8 @@ func TestHandleHelpMode(t *testing.T) {
 	if next.helpMode {
 		t.Fatalf("help mode should be disabled after '?'")
 	}
-	if cmd != nil {
-		t.Fatalf("expected nil command on help close")
+	if cmd == nil {
+		t.Fatalf("expected ClearScreen command on help close")
 	}
 }
 
