@@ -15,7 +15,8 @@ import (
 
 var (
 	titleStyle       = lipgloss.NewStyle().Bold(true)
-	selectedStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+	selectedStyle    = lipgloss.NewStyle().Background(lipgloss.Color("#88c0d0")).Foreground(lipgloss.Color("#2e3440"))
+	selectedDimStyle = lipgloss.NewStyle().Background(lipgloss.Color("#4c566a")).Foreground(lipgloss.Color("#d8dee9"))
 	dimStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	errorStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	tabActiveStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229")).Background(lipgloss.Color("62")).Padding(0, 1)
@@ -70,7 +71,6 @@ func renderSidebar(m Model, width int) string {
 	}
 
 	for i, zone := range m.zones {
-		prefix := "  "
 		active := false
 		if m.activeZones != nil {
 			_, active = m.activeZones[zone]
@@ -82,16 +82,16 @@ func renderSidebar(m Model, width int) string {
 		if active {
 			name = name + " [A]"
 		}
-		line := name
+		line := "  " + name
 		if i == m.selected {
-			prefix = "> "
+			padded := line + strings.Repeat(" ", max(0, width-lipgloss.Width(line)-4))
 			if m.focus == focusZones {
-				line = selectedStyle.Render(name)
+				line = selectedStyle.Render(padded)
 			} else {
-				line = titleStyle.Render(name)
+				line = selectedDimStyle.Render(padded)
 			}
 		}
-		b.WriteString(prefix + line + "\n")
+		b.WriteString(line + "\n")
 	}
 
 	return sidebarStyle.Width(width).Render(b.String())
@@ -662,7 +662,6 @@ func renderServicesList(b *strings.Builder, m Model, current *firewalld.Zone) {
 	}
 
 	for i, s := range current.Services {
-		prefix := "  "
 		line := highlightMatch(s, m.searchQuery)
 		if !m.permanent && m.permanentData != nil {
 			if _, ok := permanentSet[s]; !ok {
@@ -670,14 +669,15 @@ func renderServicesList(b *strings.Builder, m Model, current *firewalld.Zone) {
 			}
 		}
 		if i == m.serviceIndex {
-			prefix = "> "
 			if m.focus == focusMain {
-				line = selectedStyle.Render(line)
+				line = selectedStyle.Render("  " + line)
 			} else {
-				line = titleStyle.Render(line)
+				line = selectedDimStyle.Render("  " + line)
 			}
+		} else {
+			line = "  " + line
 		}
-		b.WriteString(prefix + line + "\n")
+		b.WriteString(line + "\n")
 	}
 }
 
@@ -690,7 +690,6 @@ func renderPortsList(b *strings.Builder, m Model, current *firewalld.Zone) {
 	for i, p := range current.Ports {
 		base := fmt.Sprintf("%s/%s", p.Port, p.Protocol)
 		line := highlightMatch(base, m.searchQuery)
-		prefix := "  "
 		if !m.permanent && m.permanentData != nil {
 			mark := portDiffMark(p, m.permanentData)
 			if mark != "" {
@@ -698,14 +697,15 @@ func renderPortsList(b *strings.Builder, m Model, current *firewalld.Zone) {
 			}
 		}
 		if i == m.portIndex {
-			prefix = "> "
 			if m.focus == focusMain {
-				line = selectedStyle.Render(line)
+				line = selectedStyle.Render("  " + line)
 			} else {
-				line = titleStyle.Render(line)
+				line = selectedDimStyle.Render("  " + line)
 			}
+		} else {
+			line = "  " + line
 		}
-		b.WriteString(prefix + line + "\n")
+		b.WriteString(line + "\n")
 	}
 }
 
@@ -723,7 +723,6 @@ func renderRichRulesList(b *strings.Builder, m Model, current *firewalld.Zone) {
 	}
 
 	for i, r := range current.RichRules {
-		prefix := "  "
 		line := highlightMatch(r, m.searchQuery)
 		if !m.permanent && m.permanentData != nil {
 			if _, ok := permanentSet[r]; !ok {
@@ -731,14 +730,15 @@ func renderRichRulesList(b *strings.Builder, m Model, current *firewalld.Zone) {
 			}
 		}
 		if i == m.richIndex {
-			prefix = "> "
 			if m.focus == focusMain {
-				line = selectedStyle.Render(line)
+				line = selectedStyle.Render("  " + line)
 			} else {
-				line = titleStyle.Render(line)
+				line = selectedDimStyle.Render("  " + line)
 			}
+		} else {
+			line = "  " + line
 		}
-		b.WriteString(prefix + line + "\n")
+		b.WriteString(line + "\n")
 	}
 }
 
@@ -757,16 +757,16 @@ func renderNetworkView(b *strings.Builder, m Model, current *firewalld.Zone) {
 	} else {
 		for _, i := range current.Interfaces {
 			line := highlightMatch(i, m.searchQuery)
-			prefix := "  "
 			if index == m.networkIndex {
-				prefix = "> "
 				if m.focus == focusMain {
-					line = selectedStyle.Render(line)
+					line = selectedStyle.Render("  " + line)
 				} else {
-					line = titleStyle.Render(line)
+					line = selectedDimStyle.Render("  " + line)
 				}
+			} else {
+				line = "  " + line
 			}
-			b.WriteString(prefix + line + "\n")
+			b.WriteString(line + "\n")
 			index++
 		}
 	}
@@ -778,16 +778,16 @@ func renderNetworkView(b *strings.Builder, m Model, current *firewalld.Zone) {
 	} else {
 		for _, s := range current.Sources {
 			line := highlightMatch(s, m.searchQuery)
-			prefix := "  "
 			if index == m.networkIndex {
-				prefix = "> "
 				if m.focus == focusMain {
-					line = selectedStyle.Render(line)
+					line = selectedStyle.Render("  " + line)
 				} else {
-					line = titleStyle.Render(line)
+					line = selectedDimStyle.Render("  " + line)
 				}
+			} else {
+				line = "  " + line
 			}
-			b.WriteString(prefix + line + "\n")
+			b.WriteString(line + "\n")
 			index++
 		}
 	}
@@ -844,20 +844,20 @@ func renderIPSetsView(b *strings.Builder, m Model) {
 	attached := attachedIPSets(m.currentData())
 	b.WriteString("IPSets:\n")
 	for i, name := range m.ipsets {
-		prefix := "  "
 		line := highlightMatch(name, m.searchQuery)
 		if _, ok := attached[name]; ok {
 			line = line + dimStyle.Render(" [Z]")
 		}
 		if i == m.ipsetIndex {
-			prefix = "> "
 			if m.focus == focusMain {
-				line = selectedStyle.Render(line)
+				line = selectedStyle.Render("  " + line)
 			} else {
-				line = titleStyle.Render(line)
+				line = selectedDimStyle.Render("  " + line)
 			}
+		} else {
+			line = "  " + line
 		}
-		b.WriteString(prefix + line + "\n")
+		b.WriteString(line + "\n")
 	}
 
 	b.WriteString("\nEntries")
@@ -1065,13 +1065,13 @@ func renderTemplates(b *strings.Builder, m Model) {
 	b.WriteString(titleStyle.Render("Apply Template"))
 	b.WriteString("\n\n")
 	for i, tpl := range defaultTemplates {
-		prefix := "  "
 		line := tpl.Name
 		if i == m.templateIndex {
-			prefix = "> "
-			line = selectedStyle.Render(line)
+			line = selectedStyle.Render("  " + line)
+		} else {
+			line = "  " + line
 		}
-		b.WriteString(prefix + line + "\n")
+		b.WriteString(line + "\n")
 	}
 
 	if m.templateIndex >= 0 && m.templateIndex < len(defaultTemplates) {
@@ -1113,16 +1113,16 @@ func renderBackupView(b *strings.Builder, m Model) {
 		b.WriteString("\n\n")
 	} else {
 		for i, item := range m.backupItems {
-			prefix := "  "
 			line := item.Time.Format("2006-01-02 15:04:05") + "  " + formatBytes(item.Size)
 			if item.Description != "" {
 				line = line + "  " + item.Description
 			}
 			if i == m.backupIndex {
-				prefix = "> "
-				line = selectedStyle.Render(line)
+				line = selectedStyle.Render("  " + line)
+			} else {
+				line = "  " + line
 			}
-			b.WriteString(prefix + line + "\n")
+			b.WriteString(line + "\n")
 		}
 		b.WriteString("\n")
 		if m.backupPreview != "" {
