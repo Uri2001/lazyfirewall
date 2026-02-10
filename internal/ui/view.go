@@ -19,8 +19,8 @@ var (
 	selectedDimStyle = lipgloss.NewStyle().Background(lipgloss.Color("#4c566a")).Foreground(lipgloss.Color("#d8dee9"))
 	dimStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	errorStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	tabActiveStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229")).Background(lipgloss.Color("62")).Padding(0, 1)
-	tabInactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Background(lipgloss.Color("237")).Padding(0, 1)
+	tabActiveStyle   = lipgloss.NewStyle().Background(lipgloss.Color("#88c0d0")).Foreground(lipgloss.Color("#2e3440")).Padding(0, 1)
+	tabInactiveStyle = lipgloss.NewStyle().Background(lipgloss.Color("#4c566a")).Foreground(lipgloss.Color("#d8dee9")).Padding(0, 1)
 	inputStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("229"))
 	matchStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
 	statusStyle      = lipgloss.NewStyle().Background(lipgloss.Color("#88c0d0")).Foreground(lipgloss.Color("#2e3440")).Padding(0, 1)
@@ -258,7 +258,7 @@ func renderTabs(m Model) string {
 		ipsetLabel = tabInactiveStyle.Render(ipsetLabel)
 		infoLabel = tabActiveStyle.Render(infoLabel)
 	}
-	return serviceLabel + " " + portLabel + " " + richLabel + " " + networkLabel + " " + ipsetLabel + " " + infoLabel
+	return serviceLabel + portLabel + richLabel + networkLabel + ipsetLabel + infoLabel
 }
 
 func renderSplitView(m Model, width int) string {
