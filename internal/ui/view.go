@@ -22,7 +22,10 @@ var (
 	tabInactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Background(lipgloss.Color("237")).Padding(0, 1)
 	inputStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("229"))
 	matchStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
-	statusStyle      = lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("250")).Padding(0, 1)
+	statusStyle      = lipgloss.NewStyle().Background(lipgloss.Color("#88c0d0")).Foreground(lipgloss.Color("#2e3440")).Padding(0, 1)
+	statusTextStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#2e3440"))
+	statusMutedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#3b4252"))
+	statusKeyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#eceff4"))
 	sidebarStyle     = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
 	mainStyle        = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
 	warnStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
@@ -790,7 +793,6 @@ func renderNetworkView(b *strings.Builder, m Model, current *firewalld.Zone) {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("i: add interface  s: add source  d: remove selected"))
 }
 
 func renderLogsView(b *strings.Builder, m Model) {
@@ -1223,47 +1225,186 @@ func renderInput(m Model) string {
 
 func renderStatus(m Model) string {
 	mode := "Runtime"
+	shortMode := "Run"
 	if m.permanent {
 		mode = "Permanent"
+		shortMode = "Perm"
 	}
-	legend := ""
-	if m.tab != tabIPSets {
-		if m.splitView {
-			legend = "Legend: + added  - removed  ~ modified"
-		} else if !m.permanent {
-			legend = "Legend: * runtime-only  ~ differs"
+
+	contextHints := []statusHint{
+		{key: "a", label: "add"},
+		{key: "d", label: "delete"},
+		{key: "c", label: "commit"},
+		{key: "u", label: "revert"},
+	}
+	if m.focus == focusZones {
+		contextHints = []statusHint{
+			{key: "n", label: "new zone"},
+			{key: "d", label: "delete zone"},
+			{key: "D", label: "default"},
+		}
+	} else if m.tab == tabIPSets {
+		contextHints = []statusHint{
+			{key: "n", label: "new ipset"},
+			{key: "a", label: "add entry"},
+			{key: "d", label: "remove entry"},
+			{key: "D", label: "delete ipset"},
 		}
 	}
-	searchHint := "  /: search"
+
+	rightHints := []statusHint{
+		{key: "/", label: "search"},
+		{key: "?", label: "help"},
+		{key: "q", label: "quit"},
+	}
 	if m.searchQuery != "" {
-		searchHint = "  /: search  n/N: next"
+		rightHints = append([]statusHint{{key: "n/N", label: "next"}}, rightHints...)
 	}
-	actions := "a: add  d: delete  c: commit  u: revert"
-	if m.focus == focusZones {
-		actions = "n: new zone  d: delete zone  D: default"
-	} else if m.tab == tabIPSets {
-		actions = "n: new ipset  a: add entry  d: remove entry  D: delete ipset"
-	}
-	templates := "  t: templates"
-	if m.readOnly {
-		actions = dimStyle.Render(actions)
-		templates = "  " + dimStyle.Render("t: templates [RO]")
-	}
-	prefix := ""
-	if m.readOnly {
-		prefix = "[RO] | "
+
+	badges := []string{}
+	if m.panicMode {
+		badges = append(badges, statusKeyStyle.Render("[PANIC]"))
 	}
 	if m.dryRun {
-		prefix = "[DRY] | " + prefix
+		badges = append(badges, statusKeyStyle.Render("[DRY]"))
 	}
-	if m.panicMode {
-		prefix = "[PANIC] | " + prefix
+	if m.readOnly {
+		badges = append(badges, statusKeyStyle.Render("[RO]"))
 	}
-	status := fmt.Sprintf("%sMode: %s | 1/2/3/4/5/6: tabs  S: split  L: logs  %s  Tab: focus  j/k: move  P: toggle  r: refresh  ?: help  q: quit%s%s", prefix, mode, actions, searchHint, templates)
-	if legend != "" {
-		status = status + "\n" + legend
+
+	contextCount := len(contextHints)
+	includeTemplate := true
+	includeMode := true
+	modeIsFull := true
+
+	buildLeft := func() string {
+		parts := []string{}
+		if len(badges) > 0 {
+			parts = append(parts, strings.Join(badges, " "))
+		}
+		if includeMode {
+			label := "Mode: " + mode
+			if !modeIsFull {
+				label = "Mode: " + shortMode
+			}
+			parts = append(parts, statusTextStyle.Render(label))
+		}
+		if contextCount > 0 {
+			parts = append(parts, renderStatusHints(contextHints[:contextCount], false))
+		}
+		if includeTemplate {
+			if m.readOnly {
+				parts = append(parts, statusMutedStyle.Render("t: templates [RO]"))
+			} else {
+				parts = append(parts, renderStatusHints([]statusHint{{key: "t", label: "templates"}}, false))
+			}
+		}
+		return joinStatusSegments(parts)
 	}
-	return statusStyle.Render(status)
+
+	buildRight := func() string {
+		return renderStatusHints(rightHints, false)
+	}
+
+	contentWidth := m.width - statusStyle.GetHorizontalFrameSize()
+	firstLine := ""
+	if contentWidth <= 0 {
+		left := buildLeft()
+		right := buildRight()
+		if left != "" {
+			firstLine = left + "  " + right
+		} else {
+			firstLine = right
+		}
+	} else {
+		for {
+			left := buildLeft()
+			right := buildRight()
+			leftW := lipgloss.Width(left)
+			rightW := lipgloss.Width(right)
+
+			if left == "" {
+				firstLine = right
+				break
+			}
+			if leftW+rightW+1 <= contentWidth {
+				gap := strings.Repeat(" ", contentWidth-leftW-rightW)
+				firstLine = left + gap + right
+				break
+			}
+
+			switch {
+			case includeTemplate:
+				includeTemplate = false
+			case contextCount > 0:
+				contextCount--
+			case modeIsFull:
+				modeIsFull = false
+			case includeMode:
+				includeMode = false
+			case len(badges) > 0:
+				badges = badges[:len(badges)-1]
+			case len(rightHints) > 1:
+				rightHints = rightHints[:len(rightHints)-1]
+			default:
+				firstLine = right
+				break
+			}
+
+			if firstLine != "" {
+				break
+			}
+		}
+	}
+
+	legendParts := []string{}
+	if m.tab != tabIPSets {
+		if m.splitView {
+			legendParts = append(legendParts, statusMutedStyle.Render("Legend: + added  - removed  ~ modified"))
+		} else if !m.permanent {
+			legendParts = append(legendParts, statusMutedStyle.Render("Legend: * runtime-only  ~ differs"))
+		}
+	}
+	if m.tab == tabNetwork {
+		legendParts = append(legendParts, renderStatusHints([]statusHint{
+			{key: "i", label: "add interface"},
+			{key: "s", label: "add source"},
+			{key: "d", label: "remove selected"},
+		}, false))
+	}
+	secondLine := " "
+	if len(legendParts) > 0 {
+		secondLine = strings.Join(legendParts, statusMutedStyle.Render(" | "))
+	}
+
+	return statusStyle.Render(firstLine + "\n" + secondLine)
+}
+
+type statusHint struct {
+	key   string
+	label string
+}
+
+func renderStatusHints(hints []statusHint, muted bool) string {
+	if len(hints) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(hints))
+	for _, hint := range hints {
+		if muted {
+			parts = append(parts, statusMutedStyle.Render(hint.key+": "+hint.label))
+			continue
+		}
+		parts = append(parts, statusKeyStyle.Render(hint.key)+statusMutedStyle.Render(": "+hint.label))
+	}
+	return strings.Join(parts, "  ")
+}
+
+func joinStatusSegments(parts []string) string {
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, statusMutedStyle.Render(" | "))
 }
 
 func highlightMatch(text, query string) string {
