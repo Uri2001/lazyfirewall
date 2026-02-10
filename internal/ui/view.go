@@ -1377,7 +1377,21 @@ func renderStatus(m Model) string {
 		secondLine = strings.Join(legendParts, statusMutedStyle.Render(" | "))
 	}
 
-	return statusStyle.Render(firstLine + "\n" + secondLine)
+	targetWidth := m.width
+	if targetWidth <= 0 {
+		targetWidth = lipgloss.Width(firstLine)
+		if w := lipgloss.Width(secondLine); w > targetWidth {
+			targetWidth = w
+		}
+		targetWidth += statusStyle.GetHorizontalFrameSize()
+	}
+
+	minWidth := statusStyle.GetHorizontalFrameSize() + 1
+	if targetWidth < minWidth {
+		targetWidth = minWidth
+	}
+
+	return statusStyle.Copy().Width(targetWidth).Render(firstLine + "\n" + secondLine)
 }
 
 type statusHint struct {
