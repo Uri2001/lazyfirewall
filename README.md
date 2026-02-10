@@ -2,6 +2,17 @@
 
 LazyFirewall is a terminal UI for managing `firewalld` using its D‑Bus API (no `firewall-cmd` parsing).
 
+## Screenshots
+
+![Services tab](images/screenshot1.png)
+*Zones sidebar with Services tab*
+
+![Split diff view](images/screenshot2.png)
+*Split diff view: Runtime vs Permanent*
+
+![Help screen](images/screenshot3.png)
+*Help screen with keybindings*
+
 ## Requirements
 - Linux with `firewalld` 1.0+
 - Go 1.22+
@@ -91,11 +102,6 @@ log_level = "info"
 - Panic mode with safety confirmation
 - IPSets list and entry management
 - Live logs (firewalld/iptables)
-
-## Phase status
-- Phase 1–4 complete
-- Phase 5 features added (templates, search, backups, panic mode, IPSets, logs)
-- Config support: `config.toml` with `default_permanent` and `log_level`
 
 ## Keybindings
 **Global**

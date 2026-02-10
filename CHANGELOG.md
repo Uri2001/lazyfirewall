@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-02-10
+
+- ui: replaced text-color and `>` cursor selection with background-color highlighting across all lists (zones, services, ports, rich rules, network, IPSets, templates, backups).
+- ui: unified tab styles (Services/Ports/Rich Rules/Network/IPSets/Info) with cyan/gray background palette matching selection colors; removed gaps between tabs for a seamless panel.
+- ui: styled main panel header with cyan background and added "Zone:" prefix.
+- ui: refactored statusbar view and changed background to cyan.
+- ui: replaced bullet/icon markers with straight text marks.
+- ui: added vertical separator between Runtime/Permanent columns in split view.
+- fix: corrected split view column width calculation to account for mainStyle border and padding, preventing text overflow on long content.
+- fix: fixed split view separator rendering by styling each line independently to prevent ANSI code interference with `JoinHorizontal`.
+- fix: added `tea.ClearScreen` on help mode exit to prevent rendering artifacts from taller help content.
+
 ## 2026-02-06
 
 - security: added `internal/validation.IsValidZoneName` and applied zone-name validation in backup/UI command paths.
