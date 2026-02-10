@@ -23,7 +23,7 @@ func (m Model) handleHelpMode(msg tea.Msg) (Model, tea.Cmd, bool) {
 	switch key.String() {
 	case "esc", "?":
 		m.helpMode = false
-		return m, nil, true
+		return m, tea.ClearScreen, true
 	case "ctrl+c", "q":
 		return m, tea.Quit, true
 	default:
