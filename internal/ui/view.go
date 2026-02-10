@@ -282,9 +282,9 @@ func renderSplitView(m Model, width int) string {
 	sepHeight := max(lipgloss.Height(leftBox), lipgloss.Height(rightBox))
 	sep := make([]string, sepHeight)
 	for i := range sep {
-		sep[i] = "│"
+		sep[i] = dimStyle.Render("│")
 	}
-	sepBox := dimStyle.Render(strings.Join(sep, "\n"))
+	sepBox := strings.Join(sep, "\n")
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftBox, sepBox, rightBox)
 }
