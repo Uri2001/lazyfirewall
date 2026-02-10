@@ -263,11 +263,12 @@ func renderTabs(m Model) string {
 }
 
 func renderSplitView(m Model, width int) string {
-	leftWidth := width/2 - 1
+	avail := width - 4 // inner width of mainStyle (border 2 + padding 2)
+	leftWidth := avail/2 - 1
 	if leftWidth < 20 {
 		leftWidth = 20
 	}
-	rightWidth := width - leftWidth - 1
+	rightWidth := avail - leftWidth - 1
 	if rightWidth < 20 {
 		rightWidth = 20
 	}
