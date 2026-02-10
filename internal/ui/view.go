@@ -278,7 +278,15 @@ func renderSplitView(m Model, width int) string {
 
 	leftBox := lipgloss.NewStyle().Width(leftWidth).Render(left)
 	rightBox := lipgloss.NewStyle().Width(rightWidth).Render(right)
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
+
+	sepHeight := max(lipgloss.Height(leftBox), lipgloss.Height(rightBox))
+	sep := make([]string, sepHeight)
+	for i := range sep {
+		sep[i] = "│"
+	}
+	sepBox := dimStyle.Render(strings.Join(sep, "\n"))
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftBox, sepBox, rightBox)
 }
 
 func splitLines(m Model) ([]string, []string) {
