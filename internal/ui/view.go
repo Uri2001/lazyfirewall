@@ -23,9 +23,9 @@ var (
 	inputStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("229"))
 	matchStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
 	statusStyle      = lipgloss.NewStyle().Background(lipgloss.Color("#88c0d0")).Foreground(lipgloss.Color("#2e3440")).Padding(0, 1)
-	statusTextStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#2e3440"))
-	statusMutedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#3b4252"))
-	statusKeyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#eceff4"))
+	statusTextStyle  = lipgloss.NewStyle().Background(lipgloss.Color("#88c0d0")).Foreground(lipgloss.Color("#3b4252"))
+	statusMutedStyle = lipgloss.NewStyle().Background(lipgloss.Color("#88c0d0")).Foreground(lipgloss.Color("#3b4252"))
+	statusKeyStyle   = lipgloss.NewStyle().Background(lipgloss.Color("#88c0d0")).Foreground(lipgloss.Color("#eceff4"))
 	sidebarStyle     = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
 	mainStyle        = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
 	warnStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
@@ -1280,7 +1280,7 @@ func renderStatus(m Model) string {
 	buildLeft := func() string {
 		parts := []string{}
 		if len(badges) > 0 {
-			parts = append(parts, strings.Join(badges, " "))
+			parts = append(parts, strings.Join(badges, statusTextStyle.Render(" ")))
 		}
 		if includeMode {
 			label := "Mode: " + mode
@@ -1312,7 +1312,7 @@ func renderStatus(m Model) string {
 		left := buildLeft()
 		right := buildRight()
 		if left != "" {
-			firstLine = left + "  " + right
+			firstLine = left + statusTextStyle.Render("  ") + right
 		} else {
 			firstLine = right
 		}
@@ -1328,7 +1328,7 @@ func renderStatus(m Model) string {
 				break
 			}
 			if leftW+rightW+1 <= contentWidth {
-				gap := strings.Repeat(" ", contentWidth-leftW-rightW)
+				gap := statusTextStyle.Render(strings.Repeat(" ", contentWidth-leftW-rightW))
 				firstLine = left + gap + right
 				break
 			}
@@ -1411,7 +1411,7 @@ func renderStatusHints(hints []statusHint, muted bool) string {
 		}
 		parts = append(parts, statusKeyStyle.Render(hint.key)+statusMutedStyle.Render(": "+hint.label))
 	}
-	return strings.Join(parts, "  ")
+	return strings.Join(parts, statusTextStyle.Render("  "))
 }
 
 func joinStatusSegments(parts []string) string {
