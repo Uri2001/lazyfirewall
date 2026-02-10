@@ -110,12 +110,13 @@ func renderMain(m Model, width int) string {
 		mode = "Permanent"
 	}
 
-	header := fmt.Sprintf("%s (%s)", zoneName, mode)
+	header := fmt.Sprintf("Zone: %s (%s)", zoneName, mode)
 	if m.loading {
 		header = fmt.Sprintf("%s %s Loading...", header, m.spinner.View())
 	}
 
-	b.WriteString(titleStyle.Render(header))
+	padded := header + strings.Repeat(" ", max(0, width-lipgloss.Width(header)-4))
+	b.WriteString(selectedStyle.Render(padded))
 	b.WriteString("\n\n")
 
 	if m.err != nil {
